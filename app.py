@@ -98,20 +98,6 @@ with col_main:
     # 表示位置を先に確保しておく(中身は後で埋める)
     graph_slot = st.empty()
 
-    # スライダーの現在値バブル(data-testid="stThumbValue")の文字を大きくする。
-    # Streamlitのバージョンアップでこの内部要素名が変わると効かなくなる可能性がある。
-    st.markdown(
-        """
-        <style>
-        div[data-testid="stThumbValue"] {
-            font-size: 1.6rem !important;
-            font-weight: 700 !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
     # ------------------------------------------------------------
     # 気温スライダー(グラフのすぐ下に配置。左右の余白をグラフの余白に近づけて位置を合わせる)
     # 表示上はグラフの下だが、値を先に取得してから上の表示・グラフを描画することで、
@@ -119,6 +105,11 @@ with col_main:
     # ------------------------------------------------------------
     slider_l, slider_mid, slider_r = st.columns([PLOT_MARGIN_L, 1000, PLOT_MARGIN_R])
     with slider_mid:
+        # 気温の大きな数値表示(スライダーの現在値表示として、スライダーの真上・同じ幅に配置)
+        # ※Streamlit内部のスライダー要素をCSSで直接拡大しようとしたが、
+        #   内部のdata-testid名がバージョンによって異なり反映されなかったため、
+        #   自前のテキスト表示に一本化している。
+        temp_display_slot = st.empty()
         temperature_c = st.slider(
             "気温 [℃](上のグラフの横軸と、だいたい対応しています)",
             min_value=float(t_min),
@@ -138,6 +129,12 @@ with col_main:
     # 計算(スライダーの最新値を使う)
     # ------------------------------------------------------------
     state = compute_state(temperature_c, initial_water, df)
+
+    temp_display_slot.markdown(
+        f"<div style='font-size:1.8rem; font-weight:700; text-align:center;'>"
+        f"気温:{temperature_c:.1f} ℃</div>",
+        unsafe_allow_html=True,
+    )
 
     # ------------------------------------------------------------
     # グラフ
