@@ -246,6 +246,17 @@ with col_main:
             bgcolor="rgba(255,255,255,0.9)",
         )
 
+    # 8. 棒の根元(x軸の目盛りの下)に、現在の気温を示すラベルを追加
+    fig.add_annotation(
+        x=temperature_c,
+        y=-0.22,
+        xref="x",
+        yref="paper",
+        text=f"{temperature_c:.1f}℃",
+        showarrow=False,
+        font=dict(size=14, color=POINT_COLOR),
+    )
+
     fig.update_layout(
         barmode="stack",
         xaxis_title="気温 [℃]",
@@ -253,7 +264,7 @@ with col_main:
         xaxis=dict(range=[t_min, t_max]),
         yaxis=dict(range=[0, sat_max * 1.2]),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-        margin=dict(l=PLOT_MARGIN_L, r=PLOT_MARGIN_R, t=40, b=10),
+        margin=dict(l=PLOT_MARGIN_L, r=PLOT_MARGIN_R, t=40, b=70),
         height=430,
     )
 
