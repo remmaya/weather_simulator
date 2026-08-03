@@ -95,18 +95,43 @@ with col_water:
     st.session_state.initial_water = initial_water
 
 with col_main:
-    # 気温の大きな数値表示(グラフに乗せず、独立して大きく表示)
-    st.markdown(
-        f"<div style='font-size:2.2rem; font-weight:700; text-align:center;'>"
-        f"現在の気温:{st.session_state.temperature_c:.1f} ℃</div>",
-        unsafe_allow_html=True,
+    # 表示位置を先に確保しておく(中身は後で埋める)
+    temp_display_slot = st.empty()
+    graph_slot = st.empty()
+
+    # ------------------------------------------------------------
+    # 気温スライダー(グラフのすぐ下に配置。左右の余白をグラフの余白に近づけて位置を合わせる)
+    # 表示上はグラフの下だが、値を先に取得してから上の表示・グラフを描画することで、
+    # 「スライダーを動かしても1回遅れてグラフが反映される」不具合を防ぐ。
+    # ------------------------------------------------------------
+    slider_l, slider_mid, slider_r = st.columns([PLOT_MARGIN_L, 1000, PLOT_MARGIN_R])
+    with slider_mid:
+        temperature_c = st.slider(
+            "気温 [℃](上のグラフの横軸と、だいたい対応しています)",
+            min_value=float(t_min),
+            max_value=float(t_max),
+            value=st.session_state.temperature_c,
+            step=0.5,
+            key="temp_slider",
+        )
+    st.session_state.temperature_c = temperature_c
+
+    st.caption(
+        "点線の枠は、その気温で入りきる水蒸気の限界(飽和水蒸気量)を表します。"
+        "青色は水蒸気として存在している部分、赤色は空気中にいられなくなって結露した水(水蒸気ではない)を表します。"
     )
 
     # ------------------------------------------------------------
-    # 計算(グラフ描画のために先に計算する)
+    # 計算(スライダーの最新値を使う)
     # ------------------------------------------------------------
-    temperature_c = st.session_state.temperature_c
     state = compute_state(temperature_c, initial_water, df)
+
+    # 気温の大きな数値表示(グラフに乗せず、独立して大きく表示)
+    temp_display_slot.markdown(
+        f"<div style='font-size:2.2rem; font-weight:700; text-align:center;'>"
+        f"現在の気温:{temperature_c:.1f} ℃</div>",
+        unsafe_allow_html=True,
+    )
 
     # ------------------------------------------------------------
     # グラフ
@@ -184,25 +209,37 @@ with col_main:
         )
     )
 
-    # 6. 湿度ラベル(棒のすぐ上に表示。最も注目してほしい値なのでグラフ上に常時表示)
-    label_y = max(state.vapor_g_m3, state.saturation_g_m3) + sat_max * 0.04
+    # 6. 湿度ラベル:棒の高さ(水蒸気量の位置)から、引き出し線でグラフの横に表示。
+    #    気温が右寄りのときは左側に、それ以外は右側に出して画面端でのはみ出しを防ぐ。
+    label_on_left = temperature_c > t_min + (t_max - t_min) * 0.7
+    ax_offset = -90 if label_on_left else 90
     fig.add_annotation(
         x=temperature_c,
-        y=label_y,
+        y=state.vapor_g_m3,
+        ax=ax_offset,
+        ay=0,
+        xref="x", yref="y",
+        axref="pixel", ayref="pixel",
         text=f"湿度 {state.humidity_percent:.0f}%",
-        showarrow=False,
+        showarrow=True,
+        arrowhead=0,
+        arrowcolor=FRAME_COLOR,
+        arrowwidth=1,
         font=dict(size=16, color="#1f4e79"),
-        bgcolor="rgba(255,255,255,0.85)",
+        bgcolor="rgba(255,255,255,0.9)",
+        bordercolor=FRAME_COLOR,
+        borderwidth=1,
     )
-    # 結露している場合は、結露量ラベルも追加(ラベル重なりを避けて少し上に)
+
+    # 7. 結露ラベル:結露しているときだけ、棒の真上に表示(水蒸気ではないことが伝わるように)
     if state.condensed_g_m3 > 0:
         fig.add_annotation(
             x=temperature_c,
-            y=label_y + sat_max * 0.06,
+            y=state.saturation_g_m3 + sat_max * 0.05,
             text=f"結露 {state.condensed_g_m3:.1f} g/m³",
             showarrow=False,
-            font=dict(size=13, color=CONDENSED_COLOR),
-            bgcolor="rgba(255,255,255,0.85)",
+            font=dict(size=14, color=CONDENSED_COLOR),
+            bgcolor="rgba(255,255,255,0.9)",
         )
 
     fig.update_layout(
@@ -216,27 +253,7 @@ with col_main:
         height=430,
     )
 
-    st.plotly_chart(fig, use_container_width=True)
-
-    # ------------------------------------------------------------
-    # 気温スライダー(グラフのすぐ下に配置。左右の余白をグラフの余白に近づけて位置を合わせる)
-    # ------------------------------------------------------------
-    slider_l, slider_mid, slider_r = st.columns([PLOT_MARGIN_L, 1000, PLOT_MARGIN_R])
-    with slider_mid:
-        temperature_c_new = st.slider(
-            "気温 [℃](上のグラフの横軸と、だいたい対応しています)",
-            min_value=float(t_min),
-            max_value=float(t_max),
-            value=st.session_state.temperature_c,
-            step=0.5,
-            key="temp_slider",
-        )
-    st.session_state.temperature_c = temperature_c_new
-
-    st.caption(
-        "点線の枠は、その気温で入りきる水蒸気の限界(飽和水蒸気量)を表します。"
-        "青色は水蒸気として存在している部分、赤色は空気中にいられなくなって結露した水(水蒸気ではない)を表します。"
-    )
+    graph_slot.plotly_chart(fig, use_container_width=True)
 
 with col_values:
     st.markdown("**現在の値**")
