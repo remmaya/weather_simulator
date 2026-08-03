@@ -12,6 +12,7 @@ Streamlit + Plotly
 import os
 import streamlit as st
 import plotly.graph_objects as go
+from streamlit_vertical_slider import vertical_slider
 
 from science_utils import (
     load_saturation_table,
@@ -38,6 +39,10 @@ POINT_COLOR = "#f2a900"        # 現在の状態を示す点
 
 BAR_WIDTH = 1.4  # 気温の棒の幅[℃]
 
+# グラフの左右の余白(px)。気温スライダーの左右位置をこれに合わせて近似させる。
+PLOT_MARGIN_L = 55
+PLOT_MARGIN_R = 20
+
 
 @st.cache_data
 def load_data(path: str):
@@ -58,144 +63,197 @@ st.markdown(
 )
 
 # ------------------------------------------------------------
-# 入力(スライダー)
+# セッション状態の初期化(気温・水の量)
 # ------------------------------------------------------------
-col_input1, col_input2 = st.columns(2)
+if "temperature_c" not in st.session_state:
+    st.session_state.temperature_c = 20.0
+if "initial_water" not in st.session_state:
+    st.session_state.initial_water = 15.0
 
-with col_input1:
-    temperature_c = st.slider(
-        "気温 [℃]",
-        min_value=float(t_min),
-        max_value=float(t_max),
-        value=20.0,
-        step=0.5,
-    )
+# ------------------------------------------------------------
+# レイアウト: 左=水の量スライダー(縦) / 中央=グラフ+気温スライダー / 右=数値パネル
+# ------------------------------------------------------------
+col_water, col_main, col_values = st.columns([1, 5, 2.2])
 
-with col_input2:
-    initial_water = st.slider(
-        "空気1m³に最初に含まれていた水の量 [g/m³]",
+with col_water:
+    st.markdown("**水の量**")
+    initial_water = vertical_slider(
+        label="空気1m³に最初に\n含まれていた水の量 [g/m³]",
+        key="water_vslider",
+        height=340,
         min_value=0.0,
         max_value=float(round(sat_max)),
-        value=15.0,
         step=0.5,
+        default_value=st.session_state.initial_water,
+        slider_color="#1f77b4",
+        track_color="#dddddd",
+        thumb_color="#1f4e79",
+        value_always_visible=True,
+    )
+    if initial_water is None:
+        initial_water = st.session_state.initial_water
+    st.session_state.initial_water = initial_water
+
+with col_main:
+    # 気温の大きな数値表示(グラフに乗せず、独立して大きく表示)
+    st.markdown(
+        f"<div style='font-size:2.2rem; font-weight:700; text-align:center;'>"
+        f"現在の気温:{st.session_state.temperature_c:.1f} ℃</div>",
+        unsafe_allow_html=True,
     )
 
-# ------------------------------------------------------------
-# 計算
-# ------------------------------------------------------------
-state = compute_state(temperature_c, initial_water, df)
+    # ------------------------------------------------------------
+    # 計算(グラフ描画のために先に計算する)
+    # ------------------------------------------------------------
+    temperature_c = st.session_state.temperature_c
+    state = compute_state(temperature_c, initial_water, df)
 
-# ------------------------------------------------------------
-# グラフ
-# ------------------------------------------------------------
-fig = go.Figure()
+    # ------------------------------------------------------------
+    # グラフ
+    # ------------------------------------------------------------
+    fig = go.Figure()
 
-# 1. 飽和水蒸気量の曲線
-fig.add_trace(
-    go.Scatter(
-        x=df["temperature_c"],
-        y=df["saturation_g_m3"],
-        mode="lines",
-        name="飽和水蒸気量の曲線",
-        line=dict(color=CURVE_COLOR, width=3),
-        hovertemplate="気温 %{x}℃ ・ 飽和水蒸気量 %{y:.1f} g/m³<extra></extra>",
-    )
-)
-
-# 2. 現在も水蒸気として存在する部分(棒・下側)
-fig.add_trace(
-    go.Bar(
-        x=[temperature_c],
-        y=[state.vapor_g_m3],
-        width=BAR_WIDTH,
-        name="水蒸気として存在する部分",
-        marker_color=VAPOR_COLOR,
-        hovertemplate="水蒸気 %{y:.1f} g/m³<extra></extra>",
-    )
-)
-
-# 3. 結露した部分(棒・水蒸気の上に積み上げ)※水蒸気ではないことを凡例名で明示
-if state.condensed_g_m3 > 0:
+    # 1. 飽和水蒸気量の曲線
     fig.add_trace(
-        go.Bar(
-            x=[temperature_c],
-            y=[state.condensed_g_m3],
-            base=[state.vapor_g_m3],
-            width=BAR_WIDTH,
-            name="結露した水(水蒸気ではない)",
-            marker_color=CONDENSED_COLOR,
-            hovertemplate="結露した水 %{y:.1f} g/m³<extra></extra>",
+        go.Scatter(
+            x=df["temperature_c"],
+            y=df["saturation_g_m3"],
+            mode="lines",
+            name="飽和水蒸気量の曲線",
+            line=dict(color=CURVE_COLOR, width=3),
+            hovertemplate="気温 %{x}℃ ・ 飽和水蒸気量 %{y:.1f} g/m³<extra></extra>",
         )
     )
 
-# 4. 外枠(その気温での飽和水蒸気量を表す枠)
-fig.add_shape(
-    type="rect",
-    x0=temperature_c - BAR_WIDTH / 2,
-    x1=temperature_c + BAR_WIDTH / 2,
-    y0=0,
-    y1=state.saturation_g_m3,
-    line=dict(color=FRAME_COLOR, width=2, dash="dash"),
-    fillcolor="rgba(0,0,0,0)",
-)
-# 凡例用のダミートレース(shapeは凡例に出ないため)
-fig.add_trace(
-    go.Scatter(
-        x=[None], y=[None],
-        mode="lines",
+    # 2. 現在も水蒸気として存在する部分(棒・下側)
+    fig.add_trace(
+        go.Bar(
+            x=[temperature_c],
+            y=[state.vapor_g_m3],
+            width=BAR_WIDTH,
+            name="水蒸気として存在する部分",
+            marker_color=VAPOR_COLOR,
+            hovertemplate="水蒸気 %{y:.1f} g/m³<extra></extra>",
+        )
+    )
+
+    # 3. 結露した部分(棒・水蒸気の上に積み上げ)※水蒸気ではないことを凡例名で明示
+    if state.condensed_g_m3 > 0:
+        fig.add_trace(
+            go.Bar(
+                x=[temperature_c],
+                y=[state.condensed_g_m3],
+                base=[state.vapor_g_m3],
+                width=BAR_WIDTH,
+                name="結露した水(水蒸気ではない)",
+                marker_color=CONDENSED_COLOR,
+                hovertemplate="結露した水 %{y:.1f} g/m³<extra></extra>",
+            )
+        )
+
+    # 4. 外枠(その気温での飽和水蒸気量を表す枠)
+    fig.add_shape(
+        type="rect",
+        x0=temperature_c - BAR_WIDTH / 2,
+        x1=temperature_c + BAR_WIDTH / 2,
+        y0=0,
+        y1=state.saturation_g_m3,
         line=dict(color=FRAME_COLOR, width=2, dash="dash"),
-        name="飽和水蒸気量の枠(その気温で入る限界)",
+        fillcolor="rgba(0,0,0,0)",
     )
-)
-
-# 5. 現在の状態を示す点
-fig.add_trace(
-    go.Scatter(
-        x=[temperature_c],
-        y=[state.vapor_g_m3],
-        mode="markers",
-        name="現在の状態",
-        marker=dict(color=POINT_COLOR, size=14, symbol="diamond",
-                     line=dict(color="black", width=1)),
-        hovertemplate="現在の状態<extra></extra>",
+    # 凡例用のダミートレース(shapeは凡例に出ないため)
+    fig.add_trace(
+        go.Scatter(
+            x=[None], y=[None],
+            mode="lines",
+            line=dict(color=FRAME_COLOR, width=2, dash="dash"),
+            name="飽和水蒸気量の枠(その気温で入る限界)",
+        )
     )
-)
 
-fig.update_layout(
-    barmode="stack",
-    xaxis_title="気温 [℃]",
-    yaxis_title="水の量 [g/m³]",
-    xaxis=dict(range=[t_min, t_max]),
-    yaxis=dict(range=[0, sat_max * 1.1]),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-    margin=dict(l=10, r=10, t=40, b=10),
-    height=480,
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-st.caption(
-    "点線の枠は、その気温で入りきる水蒸気の限界(飽和水蒸気量)を表します。"
-    "青色は水蒸気として存在している部分、赤色は空気中にいられなくなって結露した水(水蒸気ではない)を表します。"
-)
-
-# ------------------------------------------------------------
-# 数値表示
-# ------------------------------------------------------------
-st.subheader("現在の値")
-
-c1, c2, c3 = st.columns(3)
-c1.metric("気温", f"{state.temperature_c:.1f} ℃")
-c2.metric("飽和水蒸気量", f"{state.saturation_g_m3:.1f} g/m³")
-c3.metric("水蒸気として存在する量", f"{state.vapor_g_m3:.1f} g/m³")
-
-c4, c5, c6 = st.columns(3)
-c4.metric("結露した水の量", f"{state.condensed_g_m3:.1f} g/m³")
-c5.metric("湿度", f"{state.humidity_percent:.0f} %")
-c6.metric("露点", f"{state.dew_point_c:.1f} ℃")
-
-if state.condensed_g_m3 > 0:
-    st.info(
-        "設定した水の量が、この気温の飽和水蒸気量を超えています。"
-        "超えた分は水蒸気でいられなくなり、結露しています(赤色の部分)。"
+    # 5. 現在の状態を示す点
+    fig.add_trace(
+        go.Scatter(
+            x=[temperature_c],
+            y=[state.vapor_g_m3],
+            mode="markers",
+            name="現在の状態",
+            marker=dict(color=POINT_COLOR, size=14, symbol="diamond",
+                         line=dict(color="black", width=1)),
+            hovertemplate="現在の状態<extra></extra>",
+        )
     )
+
+    # 6. 湿度ラベル(棒のすぐ上に表示。最も注目してほしい値なのでグラフ上に常時表示)
+    label_y = max(state.vapor_g_m3, state.saturation_g_m3) + sat_max * 0.04
+    fig.add_annotation(
+        x=temperature_c,
+        y=label_y,
+        text=f"湿度 {state.humidity_percent:.0f}%",
+        showarrow=False,
+        font=dict(size=16, color="#1f4e79"),
+        bgcolor="rgba(255,255,255,0.85)",
+    )
+    # 結露している場合は、結露量ラベルも追加(ラベル重なりを避けて少し上に)
+    if state.condensed_g_m3 > 0:
+        fig.add_annotation(
+            x=temperature_c,
+            y=label_y + sat_max * 0.06,
+            text=f"結露 {state.condensed_g_m3:.1f} g/m³",
+            showarrow=False,
+            font=dict(size=13, color=CONDENSED_COLOR),
+            bgcolor="rgba(255,255,255,0.85)",
+        )
+
+    fig.update_layout(
+        barmode="stack",
+        xaxis_title="気温 [℃]",
+        yaxis_title="水の量 [g/m³]",
+        xaxis=dict(range=[t_min, t_max]),
+        yaxis=dict(range=[0, sat_max * 1.2]),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        margin=dict(l=PLOT_MARGIN_L, r=PLOT_MARGIN_R, t=40, b=10),
+        height=430,
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ------------------------------------------------------------
+    # 気温スライダー(グラフのすぐ下に配置。左右の余白をグラフの余白に近づけて位置を合わせる)
+    # ------------------------------------------------------------
+    slider_l, slider_mid, slider_r = st.columns([PLOT_MARGIN_L, 1000, PLOT_MARGIN_R])
+    with slider_mid:
+        temperature_c_new = st.slider(
+            "気温 [℃](上のグラフの横軸と、だいたい対応しています)",
+            min_value=float(t_min),
+            max_value=float(t_max),
+            value=st.session_state.temperature_c,
+            step=0.5,
+            key="temp_slider",
+        )
+    st.session_state.temperature_c = temperature_c_new
+
+    st.caption(
+        "点線の枠は、その気温で入りきる水蒸気の限界(飽和水蒸気量)を表します。"
+        "青色は水蒸気として存在している部分、赤色は空気中にいられなくなって結露した水(水蒸気ではない)を表します。"
+    )
+
+with col_values:
+    st.markdown("**現在の値**")
+    st.metric("飽和水蒸気量", f"{state.saturation_g_m3:.1f} g/m³")
+    st.metric("水蒸気として存在する量", f"{state.vapor_g_m3:.1f} g/m³")
+    st.metric("結露した水の量", f"{state.condensed_g_m3:.1f} g/m³")
+    st.metric("湿度", f"{state.humidity_percent:.0f} %")
+
+    if state.dew_point_out_of_range == "low":
+        st.metric("露点", f"{t_min:.0f} ℃未満")
+    elif state.dew_point_out_of_range == "high":
+        st.metric("露点", f"{t_max:.0f} ℃超")
+    else:
+        st.metric("露点", f"{state.dew_point_c:.1f} ℃")
+
+    if state.condensed_g_m3 > 0:
+        st.info(
+            "設定した水の量が、この気温の飽和水蒸気量を超えています。"
+            "超えた分は水蒸気でいられなくなり、結露しています(赤色の部分)。"
+        )

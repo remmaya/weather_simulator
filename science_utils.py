@@ -30,7 +30,8 @@ class MoistureState:
     vapor_g_m3: float             # 現在、水蒸気として存在する量 [g/m3]
     condensed_g_m3: float         # 結露した水の量 [g/m3]
     humidity_percent: float       # 湿度 [%](100%が上限)
-    dew_point_c: float            # 露点 [℃]
+    dew_point_c: float            # 露点 [℃](表の範囲外の場合は端の値にクリップ済み)
+    dew_point_out_of_range: str   # "low" / "high" / "" のいずれか(表の範囲外かどうか)
 
 
 def load_saturation_table(csv_path: str) -> pd.DataFrame:
@@ -62,20 +63,34 @@ def saturation_at(temperature_c: float, df: pd.DataFrame) -> float:
     return float(np.interp(t, df["temperature_c"], df["saturation_g_m3"]))
 
 
-def dew_point_from_water_amount(water_g_m3: float, df: pd.DataFrame) -> float:
+def dew_point_from_water_amount(water_g_m3: float, df: pd.DataFrame):
     """
     「空気中の水蒸気量」から露点(気温を下げて湿度100%になる気温)を求める。
 
     飽和水蒸気量は気温に対して単調に増加するテーブルであることを利用し、
     (saturation_g_m3 -> temperature_c) の対応を逆に補間して露点を求める。
-    水の量が表の最大飽和水蒸気量を超える場合は、表の最高気温を返す。
-    水の量が表の最小飽和水蒸気量を下回る場合は、表の最低気温を返す。
+
+    戻り値は (露点[℃], 範囲外フラグ) のタプル。
+    範囲外フラグは、水の量が表の最小飽和水蒸気量を下回る場合 "low"、
+    表の最大飽和水蒸気量を超える場合 "high"、範囲内なら "" となる。
+    範囲外の場合、露点の値自体は表の端の気温にクリップした近似値を返す
+    (表示側で「範囲外」であることを明示するために使う)。
     """
     sat_min = float(df["saturation_g_m3"].iloc[0])
     sat_max = float(df["saturation_g_m3"].iloc[-1])
+    t_min, t_max = get_temperature_range(df)
+
+    if water_g_m3 < sat_min:
+        out_of_range = "low"
+    elif water_g_m3 > sat_max:
+        out_of_range = "high"
+    else:
+        out_of_range = ""
+
     w = min(max(water_g_m3, sat_min), sat_max)
     # saturation_g_m3 は temperature_c に対して単調増加である前提
-    return float(np.interp(w, df["saturation_g_m3"], df["temperature_c"]))
+    dew_point = float(np.interp(w, df["saturation_g_m3"], df["temperature_c"]))
+    return dew_point, out_of_range
 
 
 def compute_state(temperature_c: float, initial_water_g_m3: float, df: pd.DataFrame) -> MoistureState:
@@ -92,7 +107,7 @@ def compute_state(temperature_c: float, initial_water_g_m3: float, df: pd.DataFr
     else:
         humidity = 0.0
 
-    dew_point = dew_point_from_water_amount(initial_water_g_m3, df)
+    dew_point, dew_point_out_of_range = dew_point_from_water_amount(initial_water_g_m3, df)
 
     return MoistureState(
         temperature_c=temperature_c,
@@ -102,4 +117,5 @@ def compute_state(temperature_c: float, initial_water_g_m3: float, df: pd.DataFr
         condensed_g_m3=condensed,
         humidity_percent=humidity,
         dew_point_c=dew_point,
+        dew_point_out_of_range=dew_point_out_of_range,
     )
