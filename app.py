@@ -96,7 +96,6 @@ with col_water:
 
 with col_main:
     # 表示位置を先に確保しておく(中身は後で埋める)
-    temp_display_slot = st.empty()
     graph_slot = st.empty()
 
     # ------------------------------------------------------------
@@ -106,6 +105,8 @@ with col_main:
     # ------------------------------------------------------------
     slider_l, slider_mid, slider_r = st.columns([PLOT_MARGIN_L, 1000, PLOT_MARGIN_R])
     with slider_mid:
+        # 気温の大きな数値表示(スライダーの現在値表示として、スライダーの真上・同じ幅に配置)
+        temp_display_slot = st.empty()
         temperature_c = st.slider(
             "気温 [℃](上のグラフの横軸と、だいたい対応しています)",
             min_value=float(t_min),
@@ -126,10 +127,9 @@ with col_main:
     # ------------------------------------------------------------
     state = compute_state(temperature_c, initial_water, df)
 
-    # 気温の大きな数値表示(グラフに乗せず、独立して大きく表示)
     temp_display_slot.markdown(
-        f"<div style='font-size:2.2rem; font-weight:700; text-align:center;'>"
-        f"現在の気温:{temperature_c:.1f} ℃</div>",
+        f"<div style='font-size:1.8rem; font-weight:700; text-align:center;'>"
+        f"気温:{temperature_c:.1f} ℃</div>",
         unsafe_allow_html=True,
     )
 
@@ -231,11 +231,12 @@ with col_main:
         borderwidth=1,
     )
 
-    # 7. 結露ラベル:結露しているときだけ、棒の真上に表示(水蒸気ではないことが伝わるように)
+    # 7. 結露ラベル:結露しているときだけ、棒の一番上(水蒸気+結露の合計の高さ)の上に表示
     if state.condensed_g_m3 > 0:
+        bar_top = state.vapor_g_m3 + state.condensed_g_m3
         fig.add_annotation(
             x=temperature_c,
-            y=state.saturation_g_m3 + sat_max * 0.05,
+            y=bar_top + sat_max * 0.05,
             text=f"結露 {state.condensed_g_m3:.1f} g/m³",
             showarrow=False,
             font=dict(size=14, color=CONDENSED_COLOR),
