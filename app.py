@@ -248,11 +248,17 @@ with col_main:
         font=dict(size=20, color=POINT_COLOR),
     )
 
+    # グラフの表示範囲: 通常は0〜40℃(日本の一般的な気温変化が見やすいように)。
+    # ただし気温スライダーを0℃未満(氷点下)にした場合、棒グラフが表示範囲から
+    # 消えてしまわないよう、そのときだけ左側の表示範囲を自動的に広げる。
+    x_display_min = min(0.0, temperature_c - 1.5)
+    x_display_max = t_max
+
     fig.update_layout(
         barmode="stack",
         yaxis_title="水の量 [g/m³]",
         xaxis=dict(
-            range=[t_min, t_max],
+            range=[x_display_min, x_display_max],
             title=dict(text="気温 [℃]", standoff=35),
         ),
         yaxis=dict(range=[0, sat_max * 1.2]),
