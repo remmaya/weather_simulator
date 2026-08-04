@@ -119,3 +119,137 @@ def compute_state(temperature_c: float, initial_water_g_m3: float, df: pd.DataFr
         dew_point_c=dew_point,
         dew_point_out_of_range=dew_point_out_of_range,
     )
+
+
+# ==============================================================
+# 雲のできる高さシミュレーター用の計算処理
+# ここから下は「気温・湿度・露点・雲底高度」に関する処理。
+# 上の処理(飽和水蒸気量・湿度・露点アプリ用)は変更していない。
+# 将来のフェーン現象アプリでも、この下のブロックをそのまま再利用できるようにしてある。
+# ==============================================================
+
+# 教材用の簡略モデルの定数(中学校向けの近似値)。
+# コード中に直接埋め込まず、ここで一括管理することで、
+# 教材上の設定を変更しやすくしている。
+DRY_LAPSE_RATE_C_PER_100M = 1.0        # 上昇する未飽和空気の気温低下 [℃/100m]
+DEW_POINT_LAPSE_RATE_C_PER_100M = 0.2  # 上昇中の露点の低下 [℃/100m]
+
+
+@dataclass
+class CloudState:
+    """地上の気温・湿度から求めた、雲のでき始める高さに関する状態をまとめて表すクラス"""
+    ground_temperature_c: float            # 地上の気温 [℃]
+    ground_relative_humidity_percent: float  # 地上の相対湿度 [%]
+    ground_saturation_g_m3: float          # 地上の飽和水蒸気量 [g/m3]
+    ground_vapor_g_m3: float               # 地上の実際の水蒸気量 [g/m3]
+    ground_dew_point_c: float              # 地上の露点 [℃](範囲外の場合はクリップ済み参考値)
+    dew_point_out_of_range: str            # "low" / "high" / "" (地上の露点がCSV範囲外かどうか)
+    temp_dew_diff_c: float                 # 地上の気温と露点の差 [℃]
+    cloud_base_height_m: float             # 雲底高度の計算値 [m]
+    cloud_base_reliable: bool              # 上の計算値が信頼できるか(範囲外のときは False)
+    temperature_at_cloud_base_c: float     # 雲ができ始める高度での気温 [℃]
+
+
+def water_amount_from_relative_humidity(
+    temperature_c: float, relative_humidity_percent: float, df: pd.DataFrame
+) -> float:
+    """
+    気温と相対湿度から、実際に含まれている水蒸気量を求める。
+
+    実際の水蒸気量 = その気温での飽和水蒸気量 × 相対湿度 ÷ 100
+    (saturation_at を内部で使うだけで、飽和水蒸気量の計算自体は重複実装しない)
+    """
+    sat = saturation_at(temperature_c, df)
+    rh = min(max(relative_humidity_percent, 0.0), 100.0)
+    return sat * rh / 100.0
+
+
+def temperature_at_altitude(
+    ground_temperature_c: float,
+    altitude_m: float,
+    lapse_rate_c_per_100m: float = DRY_LAPSE_RATE_C_PER_100M,
+) -> float:
+    """
+    地上の気温から、指定した高度での気温を求める(教材用の簡略な線形モデル)。
+    """
+    return ground_temperature_c - lapse_rate_c_per_100m * altitude_m / 100.0
+
+
+def dew_point_at_altitude(
+    ground_dew_point_c: float,
+    altitude_m: float,
+    lapse_rate_c_per_100m: float = DEW_POINT_LAPSE_RATE_C_PER_100M,
+) -> float:
+    """
+    地上の露点から、指定した高度での露点を求める(教材用の簡略な線形モデル)。
+    """
+    return ground_dew_point_c - lapse_rate_c_per_100m * altitude_m / 100.0
+
+
+def cloud_base_height(
+    ground_temperature_c: float,
+    ground_dew_point_c: float,
+    dry_lapse_rate_c_per_100m: float = DRY_LAPSE_RATE_C_PER_100M,
+    dew_point_lapse_rate_c_per_100m: float = DEW_POINT_LAPSE_RATE_C_PER_100M,
+) -> float:
+    """
+    地上の気温と露点から、雲ができ始める高さ(雲底高度)を求める。
+
+    上昇する空気の気温は100mにつき dry_lapse_rate_c_per_100m ℃、
+    露点は100mにつき dew_point_lapse_rate_c_per_100m ℃ 下がるものとし、
+    両者が一致する(気温 = 露点になる)高さを雲底高度とする。
+
+    地上ですでに気温 <= 露点(湿度100%以上)の場合は 0m を返す。
+    """
+    diff = ground_temperature_c - ground_dew_point_c
+    if diff <= 0:
+        return 0.0
+
+    rate_diff = dry_lapse_rate_c_per_100m - dew_point_lapse_rate_c_per_100m
+    if rate_diff <= 0:
+        # 気温減率が露点低下率以下だと、上昇しても気温と露点が絶対に一致しない
+        # (教材の前提が崩れているので、実装ミスとして早期に気づけるようにする)
+        raise ValueError(
+            "dry_lapse_rate_c_per_100m は dew_point_lapse_rate_c_per_100m より大きい必要があります"
+        )
+
+    return diff / rate_diff * 100.0
+
+
+def compute_cloud_state(
+    ground_temperature_c: float,
+    ground_relative_humidity_percent: float,
+    df: pd.DataFrame,
+) -> CloudState:
+    """
+    地上の気温・相対湿度から、雲のでき始める高さに関する状態をまとめて計算する。
+
+    重要:地上の空気が極端に乾燥している場合、理論上の露点がCSVデータの
+    気温範囲(下限)を下回ることがある。この場合 dew_point_out_of_range が
+    "low" になり、cloud_base_reliable は False になる。
+    これは「表の下限の気温を仮の露点として使った、誤りうる参考値」であることを示す。
+    実際にはさらに露点が低い(=雲がさらに高い所でしかできない、または全くできない)
+    可能性があるため、cloud_base_reliable が False のときは、
+    cloud_base_height_m の値をそのまま「雲ができる高さ」として画面に表示してはいけない。
+    """
+    sat = saturation_at(ground_temperature_c, df)
+    vapor = water_amount_from_relative_humidity(ground_temperature_c, ground_relative_humidity_percent, df)
+    dew_point, out_of_range = dew_point_from_water_amount(vapor, df)
+
+    diff = ground_temperature_c - dew_point
+    height = cloud_base_height(ground_temperature_c, dew_point)
+    reliable = (out_of_range == "")
+    temp_at_base = temperature_at_altitude(ground_temperature_c, height)
+
+    return CloudState(
+        ground_temperature_c=ground_temperature_c,
+        ground_relative_humidity_percent=ground_relative_humidity_percent,
+        ground_saturation_g_m3=sat,
+        ground_vapor_g_m3=vapor,
+        ground_dew_point_c=dew_point,
+        dew_point_out_of_range=out_of_range,
+        temp_dew_diff_c=diff,
+        cloud_base_height_m=height,
+        cloud_base_reliable=reliable,
+        temperature_at_cloud_base_c=temp_at_base,
+    )
