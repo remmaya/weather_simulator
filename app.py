@@ -217,7 +217,7 @@ with col_main:
         arrowhead=0,
         arrowcolor=FRAME_COLOR,
         arrowwidth=1,
-        font=dict(size=24, color="#1f4e79"),
+        font=dict(size=20, color="#1f4e79"),
         bgcolor="rgba(255,255,255,0.9)",
         bordercolor=FRAME_COLOR,
         borderwidth=1,
@@ -231,7 +231,7 @@ with col_main:
             y=bar_top + sat_max * 0.10,
             text=f"結露 {state.condensed_g_m3:.1f} g/m³",
             showarrow=False,
-            font=dict(size=24, color=CONDENSED_COLOR),
+            font=dict(size=20, color=CONDENSED_COLOR),
             bgcolor="rgba(255,255,255,0.9)",
         )
 
@@ -245,7 +245,7 @@ with col_main:
         yref="paper",
         text=f"{temperature_c:.1f}℃",
         showarrow=False,
-        font=dict(size=24, color=POINT_COLOR),
+        font=dict(size=20, color=POINT_COLOR),
     )
 
     fig.update_layout(
