@@ -235,14 +235,17 @@ with col_main:
             bgcolor="rgba(255,255,255,0.9)",
         )
 
-    # 8. 棒の根元に、現在の気温を示すラベルを追加。
-    #    x軸の目盛り数字とタイトル(「気温 [℃]」)の間にできたすき間に収める。
-    #    (タイトル側を standoff で下に押し出して、すき間を作っている)
+    # y軸の下側に、気温ラベル用の「すき間」を確保する(データ座標の負の領域)。
+    # 0の目盛りより下・実際のx軸線より上に収まるので、目盛りの数字と重ならない。
+    y_axis_min = -sat_max * 0.12
+    y_axis_max = sat_max * 1.2
+
+    # 8. 棒の根元に、現在の気温を示すラベルを追加(↑で確保したすき間の中に配置)
     fig.add_annotation(
         x=temperature_c,
-        y=-0.14,
+        y=y_axis_min * 0.5,
         xref="x",
-        yref="paper",
+        yref="y",
         text=f"{temperature_c:.1f}℃",
         showarrow=False,
         font=dict(size=20, color=POINT_COLOR),
@@ -259,11 +262,11 @@ with col_main:
         yaxis_title="水の量 [g/m³]",
         xaxis=dict(
             range=[x_display_min, x_display_max],
-            title=dict(text="気温 [℃]", standoff=35),
+            title=dict(text="気温 [℃]"),
         ),
-        yaxis=dict(range=[0, sat_max * 1.2]),
+        yaxis=dict(range=[y_axis_min, y_axis_max], tick0=0, dtick=10),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-        margin=dict(l=PLOT_MARGIN_L, r=PLOT_MARGIN_R, t=40, b=90),
+        margin=dict(l=PLOT_MARGIN_L, r=PLOT_MARGIN_R, t=40, b=50),
         height=430,
     )
 
