@@ -105,11 +105,6 @@ with col_main:
     # ------------------------------------------------------------
     slider_l, slider_mid, slider_r = st.columns([PLOT_MARGIN_L, 1000, PLOT_MARGIN_R])
     with slider_mid:
-        # 気温の大きな数値表示(スライダーの現在値表示として、スライダーの真上・同じ幅に配置)
-        # ※Streamlit内部のスライダー要素をCSSで直接拡大しようとしたが、
-        #   内部のdata-testid名がバージョンによって異なり反映されなかったため、
-        #   自前のテキスト表示に一本化している。
-        temp_display_slot = st.empty()
         temperature_c = st.slider(
             "気温 [℃](上のグラフの横軸と、だいたい対応しています)",
             min_value=float(t_min),
@@ -129,12 +124,6 @@ with col_main:
     # 計算(スライダーの最新値を使う)
     # ------------------------------------------------------------
     state = compute_state(temperature_c, initial_water, df)
-
-    temp_display_slot.markdown(
-        f"<div style='font-size:1.8rem; font-weight:700; text-align:center;'>"
-        f"気温:{temperature_c:.1f} ℃</div>",
-        unsafe_allow_html=True,
-    )
 
     # ------------------------------------------------------------
     # グラフ
@@ -239,17 +228,19 @@ with col_main:
         bar_top = state.vapor_g_m3 + state.condensed_g_m3
         fig.add_annotation(
             x=temperature_c,
-            y=bar_top + sat_max * 0.05,
+            y=bar_top + sat_max * 0.10,
             text=f"結露 {state.condensed_g_m3:.1f} g/m³",
             showarrow=False,
             font=dict(size=14, color=CONDENSED_COLOR),
             bgcolor="rgba(255,255,255,0.9)",
         )
 
-    # 8. 棒の根元(x軸の目盛りの下)に、現在の気温を示すラベルを追加
+    # 8. 棒の根元に、現在の気温を示すラベルを追加。
+    #    x軸の目盛り数字とタイトル(「気温 [℃]」)の間にできたすき間に収める。
+    #    (タイトル側を standoff で下に押し出して、すき間を作っている)
     fig.add_annotation(
         x=temperature_c,
-        y=-0.22,
+        y=-0.14,
         xref="x",
         yref="paper",
         text=f"{temperature_c:.1f}℃",
@@ -259,12 +250,14 @@ with col_main:
 
     fig.update_layout(
         barmode="stack",
-        xaxis_title="気温 [℃]",
         yaxis_title="水の量 [g/m³]",
-        xaxis=dict(range=[t_min, t_max]),
+        xaxis=dict(
+            range=[t_min, t_max],
+            title=dict(text="気温 [℃]", standoff=35),
+        ),
         yaxis=dict(range=[0, sat_max * 1.2]),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-        margin=dict(l=PLOT_MARGIN_L, r=PLOT_MARGIN_R, t=40, b=70),
+        margin=dict(l=PLOT_MARGIN_L, r=PLOT_MARGIN_R, t=40, b=90),
         height=430,
     )
 
