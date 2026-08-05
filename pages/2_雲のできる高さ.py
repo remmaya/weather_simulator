@@ -173,7 +173,7 @@ with col_main:
                 fill="toself",
                 mode="lines",
                 line=dict(width=0),
-                fillcolor="rgba(245, 247, 250, 0.55)",
+                fillcolor=CLOUD_COLOR,
                 name="雲が広がる範囲",
                 hoverinfo="skip",
                 showlegend=False,
