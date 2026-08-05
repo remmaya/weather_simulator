@@ -40,7 +40,6 @@ SKY_BG_COLOR = "#dceefb"
 MOUNTAIN_COLOR = "#7c9473"
 MOUNTAIN_LINE_COLOR = "#4f5d43"
 CLOUD_COLOR = "#f5f7fa"
-CLOUD_LINE_COLOR = "#9aa5b1"
 BASE_LINE_COLOR = "#3f6fae"
 PEAK_MARK_COLOR = "#5c4433"
 
@@ -186,17 +185,22 @@ with col_main:
             line=dict(color=BASE_LINE_COLOR, width=2, dash="dash"),
         )
 
-        # 雲そのもの(重なる円で簡易的に表現)
-        cloud_x = [-0.45, -0.2, 0.1, 0.4, 0.15]
-        cloud_y_offset = [40, 90, 110, 70, 30]
-        cloud_sizes = [55, 70, 80, 60, 50]
+        # 雲の輪郭:長方形の上下の縁に、枠線なしの円を並べて「もこもこ」させる
+        puff_count = 9
+        puff_x = [-0.92 + 1.84 * i / (puff_count - 1) for i in range(puff_count)]
+        bottom_puff_sizes = [55, 68, 58, 74, 62, 76, 60, 70, 54]
+        top_puff_sizes = [48, 64, 76, 58, 80, 56, 74, 62, 50]
+
         fig.add_trace(
             go.Scatter(
-                x=cloud_x,
-                y=[base_y + off for off in cloud_y_offset],
+                x=puff_x + puff_x,
+                y=[base_y] * puff_count + [band_top] * puff_count,
                 mode="markers",
-                marker=dict(size=cloud_sizes, color=CLOUD_COLOR,
-                             line=dict(color=CLOUD_LINE_COLOR, width=1)),
+                marker=dict(
+                    size=bottom_puff_sizes + top_puff_sizes,
+                    color=CLOUD_COLOR,
+                    line=dict(width=0),
+                ),
                 name="雲",
                 hoverinfo="skip",
                 showlegend=False,
