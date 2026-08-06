@@ -9,6 +9,7 @@ Streamlit + Plotly
 雲底計算をそのまま再利用しており、計算処理の重複はありません)。
 """
 
+import math
 import os
 import streamlit as st
 import plotly.graph_objects as go
@@ -167,34 +168,36 @@ with col_main:
         )
     )
 
-    # 雲(できる場合のみ、雲底〜山頂の範囲に描画)
+    # 雲(できる場合のみ描画)。
+    # 雲ができるのは風上側(左)が上昇して露点に達してから山頂までの間だけで、
+    # 山頂を越えた風下側(右)は乾いた空気が下降するだけなので、雲は描かない
+    # (風上側だけ雲がかかり、風下側は乾いて晴れている、というのがフェーン現象の典型的な絵)。
     if state.cloud_formed:
         base_y = state.cloud_base_height_m
-        band_top = mountain_height_m
+        peak_y = mountain_height_m
 
-        puff_count = 9
-        puff_x = [-0.45 + 0.9 * i / (puff_count - 1) for i in range(puff_count)]
-        bottom_puff_sizes = [40, 50, 42, 54, 44, 55, 42, 50, 38]
-        top_puff_sizes = [34, 46, 55, 40, 58, 38, 54, 44, 36]
+        def slope_x(h: float) -> float:
+            """高度hにおける、山の左側(風上側)斜面のx座標(三角形の左辺に一致)"""
+            return -0.8 * (1.0 - h / mountain_height_m)
 
-        side_puff_count = 4
-        side_puff_y = [base_y + (band_top - base_y) * i / (side_puff_count - 1) for i in range(side_puff_count)]
-        left_puff_sizes = [40, 50, 44, 52]
-        right_puff_sizes = [42, 52, 44, 50]
+        # 雲底から山頂までを、風上側の斜面に沿って外側(左)にふくらむ形で描画する。
+        # 雲底・山頂の両端ではふくらみ0にして、斜面にすっと吸い付くような形にする。
+        point_count = 11
+        altitudes = [base_y + (peak_y - base_y) * i / (point_count - 1) for i in range(point_count)]
+        max_bulge = 0.32
+        bulges = [
+            max_bulge * math.sin(math.pi * i / (point_count - 1)) for i in range(point_count)
+        ]
+        inner_x = [slope_x(h) for h in altitudes]
+        outer_x = [slope_x(h) - b for h, b in zip(altitudes, bulges)]
 
-        all_x = puff_x + puff_x + [-0.47] * side_puff_count + [0.47] * side_puff_count
-        all_y = (
-            [base_y] * puff_count
-            + [band_top] * puff_count
-            + side_puff_y
-            + side_puff_y
-        )
-        all_sizes = bottom_puff_sizes + top_puff_sizes + left_puff_sizes + right_puff_sizes
+        polygon_x = inner_x + outer_x[::-1]
+        polygon_y = altitudes + altitudes[::-1]
 
         fig.add_trace(
             go.Scatter(
-                x=[-0.47, 0.47, 0.47, -0.47],
-                y=[base_y, base_y, band_top, band_top],
+                x=polygon_x,
+                y=polygon_y,
                 fill="toself",
                 mode="lines",
                 line=dict(width=0),
@@ -204,26 +207,31 @@ with col_main:
                 showlegend=False,
             )
         )
+
+        # 外側の縁に、もこもこした質感を出すための円を並べる(両端は0になるので内側の点だけ使う)
+        puff_x = outer_x[1:-1]
+        puff_y = altitudes[1:-1]
+        puff_sizes = [30, 40, 34, 42, 36, 40, 32, 36, 28]
         fig.add_trace(
             go.Scatter(
-                x=all_x,
-                y=all_y,
+                x=puff_x,
+                y=puff_y,
                 mode="markers",
-                marker=dict(size=all_sizes, color=CLOUD_COLOR, opacity=1.0, line=dict(width=0)),
+                marker=dict(size=puff_sizes[: len(puff_x)], color=CLOUD_COLOR, opacity=1.0, line=dict(width=0)),
                 name="雲",
                 hoverinfo="skip",
                 showlegend=False,
             )
         )
 
-        # 雲底を示す水平の点線(山の幅いっぱいに)
+        # 雲底を示す点線(風上側の斜面のあたりだけに描き、風下側には引かない)
         fig.add_shape(
-            type="line", x0=-0.8 * (1 - base_y / mountain_height_m), x1=0.8 * (1 - base_y / mountain_height_m),
+            type="line", x0=-1.05, x1=slope_x(base_y),
             y0=base_y, y1=base_y,
             line=dict(color=BASE_LINE_COLOR, width=2, dash="dash"),
         )
         fig.add_annotation(
-            x=0.85, y=base_y,
+            x=-1.05, y=base_y,
             xref="x", yref="y", xanchor="left",
             text=f"雲底 約{base_y:.0f}m",
             showarrow=False,
