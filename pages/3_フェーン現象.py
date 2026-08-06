@@ -180,16 +180,19 @@ with col_main:
             """高度hにおける、山の左側(風上側)斜面のx座標(三角形の左辺に一致)"""
             return -0.8 * (1.0 - h / mountain_height_m)
 
-        # 雲底から山頂までを、風上側の斜面に沿って外側(左)にふくらむ形で描画する。
-        # 雲底・山頂の両端ではふくらみ0にして、斜面にすっと吸い付くような形にする。
+        # 雲底から山頂までを、風上側の斜面に沿って描画する。
+        # 外側(左・空側)に大きくふくらみつつ、内側(右・山側)にも少し重なることで、
+        # 斜面をしっかり覆っているように見せる。雲底・山頂の両端ではふくらみ0にして、
+        # 斜面にすっと吸い付くような形にする。
         point_count = 11
         altitudes = [base_y + (peak_y - base_y) * i / (point_count - 1) for i in range(point_count)]
-        max_bulge = 0.32
-        bulges = [
-            max_bulge * math.sin(math.pi * i / (point_count - 1)) for i in range(point_count)
-        ]
-        inner_x = [slope_x(h) for h in altitudes]
-        outer_x = [slope_x(h) - b for h, b in zip(altitudes, bulges)]
+        max_bulge_out = 0.55  # 外側(空側)へのふくらみの最大値
+        max_bulge_in = 0.20   # 内側(山側)への食い込みの最大値
+        shape_factor = [math.sin(math.pi * i / (point_count - 1)) for i in range(point_count)]
+        bulges_out = [max_bulge_out * f for f in shape_factor]
+        bulges_in = [max_bulge_in * f for f in shape_factor]
+        inner_x = [min(slope_x(h) + b, 0.0) for h, b in zip(altitudes, bulges_in)]
+        outer_x = [slope_x(h) - b for h, b in zip(altitudes, bulges_out)]
 
         polygon_x = inner_x + outer_x[::-1]
         polygon_y = altitudes + altitudes[::-1]
@@ -211,7 +214,7 @@ with col_main:
         # 外側の縁に、もこもこした質感を出すための円を並べる(両端は0になるので内側の点だけ使う)
         puff_x = outer_x[1:-1]
         puff_y = altitudes[1:-1]
-        puff_sizes = [30, 40, 34, 42, 36, 40, 32, 36, 28]
+        puff_sizes = [40, 52, 44, 56, 46, 54, 42, 48, 36]
         fig.add_trace(
             go.Scatter(
                 x=puff_x,
