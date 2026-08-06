@@ -253,3 +253,137 @@ def compute_cloud_state(
         cloud_base_reliable=reliable,
         temperature_at_cloud_base_c=temp_at_base,
     )
+
+
+# ==============================================================
+# フェーン現象シミュレーター用の計算処理
+# 「雲のできる高さ」で使った雲底計算(cloud_base_height など)をそのまま再利用し、
+# それに「雲底から山頂までの上昇」「山頂から反対側のふもとまでの下降」を
+# 付け加えることでフェーン現象を再現する。
+#
+# 中学校向けの簡略モデルの考え方:
+#   1. 風上側のふもとから雲底高度までは、乾燥断熱減率(気温)・露点減率(露点)で上昇する
+#      (雲のできる高さシミュレーターと全く同じ計算)。
+#   2. 雲底高度が山頂より低ければ、そこから山頂までは雲(飽和した空気)として、
+#      湿潤断熱減率で気温が下がりながら上昇する。山頂の空気は湿度100%とみなす。
+#   3. 雲底高度が山頂より高い場合(=雲ができない)は、山頂まで乾燥断熱減率のまま上昇する。
+#   4. 山を越えると雲(水滴)は雨として落ちてしまうので、山頂から風下側のふもとまでは、
+#      山頂での水蒸気量を保ったまま、乾燥断熱減率で気温が上がりながら下降する。
+#
+# この結果、雲ができた場合は風下側のふもとの気温が風上側より高くなる
+# (=フェーン現象)。雲ができなかった場合は、行きと帰りが同じ乾燥断熱減率になるため、
+# 風下側の気温は風上側と同じに戻り、気温差は生まれない。
+# ==============================================================
+
+MOIST_LAPSE_RATE_C_PER_100M = 0.5  # 雲ができた後(飽和した空気)が上昇するときの気温低下 [℃/100m]
+
+
+@dataclass
+class FoehnState:
+    """フェーン現象シミュレーターの計算結果をまとめて表すクラス"""
+    # 風上側(左)のふもとの状態
+    ground_temperature_c: float
+    ground_relative_humidity_percent: float
+    ground_saturation_g_m3: float
+    ground_vapor_g_m3: float
+    ground_dew_point_c: float
+    dew_point_out_of_range: str  # "low" / "high" / "" (風上側の露点がCSV範囲外かどうか)
+
+    mountain_height_m: float
+
+    # 山頂・雲に関する状態
+    cloud_base_height_m: float  # 雲ができ始める高さの計算値 [m](雲ができない場合は参考値)
+    cloud_base_reliable: bool   # 雲底の計算値そのものが信頼できるか(範囲外なら False)
+    cloud_formed: bool          # この山の高さで実際に雲ができるか
+
+    peak_temperature_c: float   # 山頂の気温 [℃]
+    peak_vapor_g_m3: float      # 山頂の水蒸気量 [g/m3](雲ができた場合は飽和水蒸気量と一致)
+
+    # 風下側(右)のふもとの状態
+    leeward_temperature_c: float
+    leeward_saturation_g_m3: float
+    leeward_vapor_g_m3: float
+    leeward_relative_humidity_percent: float
+
+    temperature_rise_c: float  # 風下側の気温 - 風上側の気温(フェーン現象による昇温)[℃]
+
+
+def compute_foehn_state(
+    ground_temperature_c: float,
+    ground_relative_humidity_percent: float,
+    mountain_height_m: float,
+    df: pd.DataFrame,
+) -> FoehnState:
+    """
+    風上側(左)のふもとの気温・湿度と山の高さから、フェーン現象の計算結果をまとめて求める。
+
+    地上の空気が乾燥しすぎていて露点がCSVデータの範囲外になる場合
+    (cloud_base_reliable = False)は、雲底高度そのものは求められないが、
+    実際にはさらに雲ができにくいはずなので、この山の高さでは
+    「雲はできない」ものとして扱う(cloud_formed = False)。
+    """
+    sat = saturation_at(ground_temperature_c, df)
+    vapor = water_amount_from_relative_humidity(
+        ground_temperature_c, ground_relative_humidity_percent, df
+    )
+    dew_point, out_of_range = dew_point_from_water_amount(vapor, df)
+    cloud_base_reliable = (out_of_range == "")
+
+    if cloud_base_reliable:
+        cloud_base = cloud_base_height(ground_temperature_c, dew_point)
+    else:
+        # 範囲外(非常に乾燥している)ときは、山頂より確実に高いものとして扱い、
+        # 「雲ができない」判定にそろえる(値自体は参考値であり画面には表示しない)。
+        cloud_base = mountain_height_m + 1.0
+
+    cloud_formed = cloud_base_reliable and cloud_base <= mountain_height_m
+
+    if cloud_formed:
+        # 風上側のふもと → 雲底: 乾燥断熱減率で上昇
+        temp_at_cloud_base = temperature_at_altitude(ground_temperature_c, cloud_base)
+        # 雲底 → 山頂: 湿潤断熱減率で上昇(空気は飽和したまま)
+        remaining_height = mountain_height_m - cloud_base
+        peak_temperature_c = (
+            temp_at_cloud_base - MOIST_LAPSE_RATE_C_PER_100M * remaining_height / 100.0
+        )
+        # 山頂の空気は飽和しているとみなすので、水蒸気量はその気温での飽和水蒸気量に等しい
+        peak_vapor_g_m3 = saturation_at(peak_temperature_c, df)
+    else:
+        # 雲ができないので、山頂まで乾燥断熱減率のまま上昇。水蒸気量は変化しない。
+        peak_temperature_c = temperature_at_altitude(ground_temperature_c, mountain_height_m)
+        peak_vapor_g_m3 = vapor
+
+    # 山頂 → 風下側のふもと: 雲(水滴)は雨として落ちているので、
+    # 山頂での水蒸気量を保ったまま、乾燥断熱減率で気温が上がりながら下降する。
+    leeward_temperature_c = peak_temperature_c + DRY_LAPSE_RATE_C_PER_100M * mountain_height_m / 100.0
+    leeward_saturation_g_m3 = saturation_at(leeward_temperature_c, df)
+    leeward_vapor_g_m3 = min(peak_vapor_g_m3, leeward_saturation_g_m3)
+
+    if leeward_saturation_g_m3 > 0:
+        leeward_relative_humidity_percent = min(
+            100.0, leeward_vapor_g_m3 / leeward_saturation_g_m3 * 100.0
+        )
+    else:
+        leeward_relative_humidity_percent = 0.0
+
+    temperature_rise_c = leeward_temperature_c - ground_temperature_c
+
+    return FoehnState(
+        ground_temperature_c=ground_temperature_c,
+        ground_relative_humidity_percent=ground_relative_humidity_percent,
+        ground_saturation_g_m3=sat,
+        ground_vapor_g_m3=vapor,
+        ground_dew_point_c=dew_point,
+        dew_point_out_of_range=out_of_range,
+        mountain_height_m=mountain_height_m,
+        cloud_base_height_m=cloud_base,
+        cloud_base_reliable=cloud_base_reliable,
+        cloud_formed=cloud_formed,
+        peak_temperature_c=peak_temperature_c,
+        peak_vapor_g_m3=peak_vapor_g_m3,
+        leeward_temperature_c=leeward_temperature_c,
+        leeward_saturation_g_m3=leeward_saturation_g_m3,
+        leeward_vapor_g_m3=leeward_vapor_g_m3,
+        leeward_relative_humidity_percent=leeward_relative_humidity_percent,
+        temperature_rise_c=temperature_rise_c,
+    )
