@@ -135,8 +135,8 @@ state = compute_foehn_state(ground_temperature_c, ground_humidity_percent, mount
 
 MAX_DISPLAY_HEIGHT_M = max(3500.0, mountain_height_m * 1.2)
 # 気温ラベル用に、y軸の下側(データ座標の負の領域)に少しすき間を確保する
-Y_AXIS_MIN = -MAX_DISPLAY_HEIGHT_M * 0.10
-LABEL_Y = Y_AXIS_MIN * 0.55
+Y_AXIS_MIN = -MAX_DISPLAY_HEIGHT_M * 0.13
+LABEL_Y = Y_AXIS_MIN * 0.6
 
 with col_main:
     fig = go.Figure()
@@ -265,9 +265,9 @@ with col_main:
     )
     fig.add_annotation(
         x=-0.8, y=LABEL_Y, xref="x", yref="y",
-        text=f"風上<br>{state.ground_temperature_c:.1f}℃ / {state.ground_relative_humidity_percent:.0f}%",
+        text=f"{state.ground_temperature_c:.1f}℃ / {state.ground_relative_humidity_percent:.0f}%",
         showarrow=False,
-        font=dict(size=13, color=WINDWARD_COLOR),
+        font=dict(size=20, color=WINDWARD_COLOR),
         align="center",
     )
 
@@ -283,9 +283,9 @@ with col_main:
     )
     fig.add_annotation(
         x=0.8, y=LABEL_Y, xref="x", yref="y",
-        text=f"風下<br>{state.leeward_temperature_c:.1f}℃ / {state.leeward_relative_humidity_percent:.0f}%",
+        text=f"{state.leeward_temperature_c:.1f}℃ / {state.leeward_relative_humidity_percent:.0f}%",
         showarrow=False,
-        font=dict(size=13, color=LEEWARD_COLOR),
+        font=dict(size=20, color=LEEWARD_COLOR),
         align="center",
     )
 
