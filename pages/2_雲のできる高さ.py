@@ -185,20 +185,35 @@ with col_main:
             line=dict(color=BASE_LINE_COLOR, width=2, dash="dash"),
         )
 
-        # 雲の輪郭:長方形の上下の縁に、枠線なしの円を並べて「もこもこ」させる
+        # 雲の輪郭:長方形の上下左右の縁に、枠線なしの円を並べて「もこもこ」させる
         puff_count = 9
         puff_x = [-0.92 + 1.84 * i / (puff_count - 1) for i in range(puff_count)]
         bottom_puff_sizes = [55, 68, 58, 74, 62, 76, 60, 70, 54]
         top_puff_sizes = [48, 64, 76, 58, 80, 56, 74, 62, 50]
 
+        side_puff_count = 5
+        side_puff_y = [base_y + (band_top - base_y) * i / (side_puff_count - 1) for i in range(side_puff_count)]
+        left_puff_sizes = [56, 70, 60, 72, 58]
+        right_puff_sizes = [58, 72, 60, 70, 56]
+
+        all_x = puff_x + puff_x + [-0.92] * side_puff_count + [0.92] * side_puff_count
+        all_y = (
+            [base_y] * puff_count
+            + [band_top] * puff_count
+            + side_puff_y
+            + side_puff_y
+        )
+        all_sizes = bottom_puff_sizes + top_puff_sizes + left_puff_sizes + right_puff_sizes
+
         fig.add_trace(
             go.Scatter(
-                x=puff_x + puff_x,
-                y=[base_y] * puff_count + [band_top] * puff_count,
+                x=all_x,
+                y=all_y,
                 mode="markers",
                 marker=dict(
-                    size=bottom_puff_sizes + top_puff_sizes,
+                    size=all_sizes,
                     color=CLOUD_COLOR,
+                    opacity=1.0,
                     line=dict(width=0),
                 ),
                 name="雲",
