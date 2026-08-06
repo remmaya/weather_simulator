@@ -180,18 +180,28 @@ with col_main:
             """高度hにおける、山の左側(風上側)斜面のx座標(三角形の左辺に一致)"""
             return -0.8 * (1.0 - h / mountain_height_m)
 
+        def right_slope_x(h: float) -> float:
+            """高度hにおける、山の右側(風下側)斜面のx座標(三角形の右辺に一致)"""
+            return 0.8 * (1.0 - h / mountain_height_m)
+
         # 雲底から山頂までを、風上側の斜面に沿って描画する。
-        # 外側(左・空側)に大きくふくらみつつ、内側(右・山側)にも少し重なることで、
-        # 斜面をしっかり覆っているように見せる。雲底・山頂の両端ではふくらみ0にして、
+        # 外側(左・空側)に大きくふくらみつつ、内側(右・山側)にも重なることで、
+        # 斜面をしっかり覆っているように見せる。中心線(山頂の真上)を多少越えるのは
+        # かまわないが、風下側斜面(右斜面)には絶対に重ならないよう、その高さでの
+        # 右斜面のx座標を上限にクランプする。雲底・山頂の両端ではふくらみ0にして、
         # 斜面にすっと吸い付くような形にする。
         point_count = 11
         altitudes = [base_y + (peak_y - base_y) * i / (point_count - 1) for i in range(point_count)]
         max_bulge_out = 0.55  # 外側(空側)へのふくらみの最大値
-        max_bulge_in = 0.20   # 内側(山側)への食い込みの最大値
+        max_bulge_in = 0.38   # 内側(山側)への食い込みの最大値(中心線を多少越えてもよい)
+        RIGHT_SLOPE_MARGIN = 0.08  # 右斜面の線から少し余裕をもたせておく
         shape_factor = [math.sin(math.pi * i / (point_count - 1)) for i in range(point_count)]
         bulges_out = [max_bulge_out * f for f in shape_factor]
         bulges_in = [max_bulge_in * f for f in shape_factor]
-        inner_x = [min(slope_x(h) + b, 0.0) for h, b in zip(altitudes, bulges_in)]
+        inner_x = [
+            min(slope_x(h) + b, right_slope_x(h) - RIGHT_SLOPE_MARGIN)
+            for h, b in zip(altitudes, bulges_in)
+        ]
         outer_x = [slope_x(h) - b for h, b in zip(altitudes, bulges_out)]
 
         polygon_x = inner_x + outer_x[::-1]
@@ -221,6 +231,28 @@ with col_main:
                 y=puff_y,
                 mode="markers",
                 marker=dict(size=puff_sizes[: len(puff_x)], color=CLOUD_COLOR, opacity=1.0, line=dict(width=0)),
+                name="雲",
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+
+        # 内側(山側)の縁にも、同じようにもこもこした質感を出す円を並べる
+        # (外側より少し小さめにして、右斜面側にはみ出しにくくしておく)
+        inner_puff_x = inner_x[1:-1]
+        inner_puff_y = altitudes[1:-1]
+        inner_puff_sizes = [26, 34, 28, 36, 30, 34, 26, 30, 22]
+        fig.add_trace(
+            go.Scatter(
+                x=inner_puff_x,
+                y=inner_puff_y,
+                mode="markers",
+                marker=dict(
+                    size=inner_puff_sizes[: len(inner_puff_x)],
+                    color=CLOUD_COLOR,
+                    opacity=1.0,
+                    line=dict(width=0),
+                ),
                 name="雲",
                 hoverinfo="skip",
                 showlegend=False,
