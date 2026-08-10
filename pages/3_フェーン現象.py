@@ -178,14 +178,14 @@ with col_main:
 
     # 空気の流れを示す矢印(斜面に沿って、風上側は右上向き=上昇、風下側は右下向き=下降)。
     # 雲ができるかどうかに関わらず、空気自体は常に山を越えて流れているので、
-    # 雲の有無とは無関係に表示する。斜面の少し内側(山の緑の部分)に描くことで、
-    # 雲がある場合とない場合の両方で見やすくする。
-    ARROW_INSET = 0.07
+    # 雲の有無とは無関係に表示する。「山肌に沿って」動く様子がわかるよう、
+    # 斜面のすぐ外側(空側)に描く。
+    ARROW_INSET = 0.09
     windward_arrow_tail_h = mountain_height_m * 0.12
     windward_arrow_head_h = mountain_height_m * 0.50
     fig.add_annotation(
-        x=slope_x(windward_arrow_head_h) + ARROW_INSET, y=windward_arrow_head_h,
-        ax=slope_x(windward_arrow_tail_h) + ARROW_INSET, ay=windward_arrow_tail_h,
+        x=slope_x(windward_arrow_head_h) - ARROW_INSET, y=windward_arrow_head_h,
+        ax=slope_x(windward_arrow_tail_h) - ARROW_INSET, ay=windward_arrow_tail_h,
         xref="x", yref="y", axref="x", ayref="y",
         showarrow=True, arrowhead=3, arrowsize=1.3, arrowwidth=4,
         arrowcolor=WINDWARD_COLOR,
@@ -194,8 +194,8 @@ with col_main:
     leeward_arrow_tail_h = mountain_height_m * 0.50
     leeward_arrow_head_h = mountain_height_m * 0.12
     fig.add_annotation(
-        x=right_slope_x(leeward_arrow_head_h) - ARROW_INSET, y=leeward_arrow_head_h,
-        ax=right_slope_x(leeward_arrow_tail_h) - ARROW_INSET, ay=leeward_arrow_tail_h,
+        x=right_slope_x(leeward_arrow_head_h) + ARROW_INSET, y=leeward_arrow_head_h,
+        ax=right_slope_x(leeward_arrow_tail_h) + ARROW_INSET, ay=leeward_arrow_tail_h,
         xref="x", yref="y", axref="x", ayref="y",
         showarrow=True, arrowhead=3, arrowsize=1.3, arrowwidth=4,
         arrowcolor=LEEWARD_COLOR,
@@ -213,14 +213,17 @@ with col_main:
         # 外側(左・空側)に大きくふくらみつつ、内側(右・山側)にも重なることで、
         # 斜面をしっかり覆っているように見せる。中心線(山頂の真上)を多少越えるのは
         # かまわないが、風下側斜面(右斜面)には絶対に重ならないよう、その高さでの
-        # 右斜面のx座標を上限にクランプする。雲底・山頂の両端ではふくらみ0にして、
-        # 斜面にすっと吸い付くような形にする。
+        # 右斜面のx座標を上限にクランプする。雲底(山の中腹)ではふくらみ0にして
+        # 斜面にすっと吸い付く形にする一方、山頂に向かっては幅をすぼめず、
+        # 山頂そのものも雲に包まれているように見せる(山頂の❍マーク・ラベルは
+        # あとから描画するので、雲の上に重なって見える)。
         point_count = 11
         altitudes = [base_y + (peak_y - base_y) * i / (point_count - 1) for i in range(point_count)]
         max_bulge_out = 0.55  # 外側(空側)へのふくらみの最大値
         max_bulge_in = 0.38   # 内側(山側)への食い込みの最大値(中心線を多少越えてもよい)
         RIGHT_SLOPE_MARGIN = 0.08  # 右斜面の線から少し余裕をもたせておく
-        shape_factor = [math.sin(math.pi * i / (point_count - 1)) for i in range(point_count)]
+        # 雲底では0、山頂に向かうにつれて最大値まで単調に増える(山頂ですぼめない)
+        shape_factor = [math.sin(math.pi / 2 * i / (point_count - 1)) for i in range(point_count)]
         bulges_out = [max_bulge_out * f for f in shape_factor]
         bulges_in = [max_bulge_in * f for f in shape_factor]
         inner_x = [
@@ -246,10 +249,11 @@ with col_main:
             )
         )
 
-        # 外側の縁に、もこもこした質感を出すための円を並べる(両端は0になるので内側の点だけ使う)
-        puff_x = outer_x[1:-1]
-        puff_y = altitudes[1:-1]
-        puff_sizes = [40, 52, 44, 56, 46, 54, 42, 48, 36]
+        # 外側の縁に、もこもこした質感を出すための円を並べる
+        # (雲底側の端(index 0)だけはふくらみ0でぴったり斜面に一致するので除く)
+        puff_x = outer_x[1:]
+        puff_y = altitudes[1:]
+        puff_sizes = [40, 52, 44, 56, 46, 54, 42, 48, 40, 34]
         fig.add_trace(
             go.Scatter(
                 x=puff_x,
@@ -264,9 +268,9 @@ with col_main:
 
         # 内側(山側)の縁にも、同じようにもこもこした質感を出す円を並べる
         # (外側より少し小さめにして、右斜面側にはみ出しにくくしておく)
-        inner_puff_x = inner_x[1:-1]
-        inner_puff_y = altitudes[1:-1]
-        inner_puff_sizes = [26, 34, 28, 36, 30, 34, 26, 30, 22]
+        inner_puff_x = inner_x[1:]
+        inner_puff_y = altitudes[1:]
+        inner_puff_sizes = [26, 34, 28, 36, 30, 34, 26, 30, 26, 20]
         fig.add_trace(
             go.Scatter(
                 x=inner_puff_x,
