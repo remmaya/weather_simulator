@@ -135,8 +135,8 @@ state = compute_foehn_state(ground_temperature_c, ground_humidity_percent, mount
 
 MAX_DISPLAY_HEIGHT_M = max(3500.0, mountain_height_m * 1.2)
 # 気温ラベル用に、y軸の下側(データ座標の負の領域)に少しすき間を確保する
-Y_AXIS_MIN = -MAX_DISPLAY_HEIGHT_M * 0.13
-LABEL_Y = Y_AXIS_MIN * 0.6
+Y_AXIS_MIN = -MAX_DISPLAY_HEIGHT_M * 0.19
+LABEL_Y = Y_AXIS_MIN * 0.62
 
 with col_main:
     fig = go.Figure()
@@ -168,6 +168,39 @@ with col_main:
         )
     )
 
+    def slope_x(h: float) -> float:
+        """高度hにおける、山の左側(風上側)斜面のx座標(三角形の左辺に一致)"""
+        return -0.8 * (1.0 - h / mountain_height_m)
+
+    def right_slope_x(h: float) -> float:
+        """高度hにおける、山の右側(風下側)斜面のx座標(三角形の右辺に一致)"""
+        return 0.8 * (1.0 - h / mountain_height_m)
+
+    # 空気の流れを示す矢印(斜面に沿って、風上側は右上向き=上昇、風下側は右下向き=下降)。
+    # 雲ができるかどうかに関わらず、空気自体は常に山を越えて流れているので、
+    # 雲の有無とは無関係に表示する。斜面の少し内側(山の緑の部分)に描くことで、
+    # 雲がある場合とない場合の両方で見やすくする。
+    ARROW_INSET = 0.07
+    windward_arrow_tail_h = mountain_height_m * 0.12
+    windward_arrow_head_h = mountain_height_m * 0.50
+    fig.add_annotation(
+        x=slope_x(windward_arrow_head_h) + ARROW_INSET, y=windward_arrow_head_h,
+        ax=slope_x(windward_arrow_tail_h) + ARROW_INSET, ay=windward_arrow_tail_h,
+        xref="x", yref="y", axref="x", ayref="y",
+        showarrow=True, arrowhead=3, arrowsize=1.3, arrowwidth=4,
+        arrowcolor=WINDWARD_COLOR,
+    )
+
+    leeward_arrow_tail_h = mountain_height_m * 0.50
+    leeward_arrow_head_h = mountain_height_m * 0.12
+    fig.add_annotation(
+        x=right_slope_x(leeward_arrow_head_h) - ARROW_INSET, y=leeward_arrow_head_h,
+        ax=right_slope_x(leeward_arrow_tail_h) - ARROW_INSET, ay=leeward_arrow_tail_h,
+        xref="x", yref="y", axref="x", ayref="y",
+        showarrow=True, arrowhead=3, arrowsize=1.3, arrowwidth=4,
+        arrowcolor=LEEWARD_COLOR,
+    )
+
     # 雲(できる場合のみ描画)。
     # 雲ができるのは風上側(左)が上昇して露点に達してから山頂までの間だけで、
     # 山頂を越えた風下側(右)は乾いた空気が下降するだけなので、雲は描かない
@@ -175,14 +208,6 @@ with col_main:
     if state.cloud_formed:
         base_y = state.cloud_base_height_m
         peak_y = mountain_height_m
-
-        def slope_x(h: float) -> float:
-            """高度hにおける、山の左側(風上側)斜面のx座標(三角形の左辺に一致)"""
-            return -0.8 * (1.0 - h / mountain_height_m)
-
-        def right_slope_x(h: float) -> float:
-            """高度hにおける、山の右側(風下側)斜面のx座標(三角形の右辺に一致)"""
-            return 0.8 * (1.0 - h / mountain_height_m)
 
         # 雲底から山頂までを、風上側の斜面に沿って描画する。
         # 外側(左・空側)に大きくふくらみつつ、内側(右・山側)にも重なることで、
@@ -280,9 +305,9 @@ with col_main:
             x=[0.0], y=[mountain_height_m],
             mode="markers+text",
             marker=dict(color=PEAK_MARK_COLOR, size=10, symbol="triangle-up"),
-            text=[f"山頂 {state.peak_temperature_c:.1f}℃"],
+            text=[f"山頂<br>{state.peak_temperature_c:.1f}℃"],
             textposition="top center",
-            textfont=dict(size=14, color=PEAK_MARK_COLOR),
+            textfont=dict(size=20, color=PEAK_MARK_COLOR),
             hoverinfo="skip",
             showlegend=False,
         )
@@ -300,7 +325,7 @@ with col_main:
     )
     fig.add_annotation(
         x=-0.8, y=LABEL_Y, xref="x", yref="y",
-        text=f"{state.ground_temperature_c:.1f}℃ / {state.ground_relative_humidity_percent:.0f}%",
+        text=f"{state.ground_temperature_c:.1f}℃<br>{state.ground_relative_humidity_percent:.0f}%",
         showarrow=False,
         font=dict(size=20, color=WINDWARD_COLOR),
         align="center",
@@ -318,7 +343,7 @@ with col_main:
     )
     fig.add_annotation(
         x=0.8, y=LABEL_Y, xref="x", yref="y",
-        text=f"{state.leeward_temperature_c:.1f}℃ / {state.leeward_relative_humidity_percent:.0f}%",
+        text=f"{state.leeward_temperature_c:.1f}℃<br>{state.leeward_relative_humidity_percent:.0f}%",
         showarrow=False,
         font=dict(size=20, color=LEEWARD_COLOR),
         align="center",
@@ -334,7 +359,7 @@ with col_main:
             fixedrange=True,
         ),
         plot_bgcolor=SKY_BG_COLOR,
-        margin=dict(l=60, r=20, t=30, b=20),
+        margin=dict(l=60, r=20, t=30, b=30),
         height=560,
         showlegend=False,
     )
