@@ -253,7 +253,7 @@ with col_main:
         # (雲底側の端(index 0)だけはふくらみ0でぴったり斜面に一致するので除く)
         puff_x = outer_x[1:]
         puff_y = altitudes[1:]
-        puff_sizes = [40, 52, 44, 56, 46, 54, 42, 48, 40, 34]
+        puff_sizes = [40, 52, 44, 56, 46, 54, 44, 50, 46, 44]
         fig.add_trace(
             go.Scatter(
                 x=puff_x,
@@ -270,7 +270,7 @@ with col_main:
         # (外側より少し小さめにして、右斜面側にはみ出しにくくしておく)
         inner_puff_x = inner_x[1:]
         inner_puff_y = altitudes[1:]
-        inner_puff_sizes = [26, 34, 28, 36, 30, 34, 26, 30, 26, 20]
+        inner_puff_sizes = [26, 34, 28, 36, 30, 34, 28, 32, 28, 26]
         fig.add_trace(
             go.Scatter(
                 x=inner_puff_x,
@@ -282,6 +282,26 @@ with col_main:
                     opacity=1.0,
                     line=dict(width=0),
                 ),
+                name="雲",
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+
+        # 山頂の真上に少しかぶさる「てっぺんのもこもこ」(山頂が雲に包まれて見えるように)
+        cap_y = peak_y + mountain_height_m * 0.035
+        cap_x = [
+            outer_x[-1] * 0.75 + inner_x[-1] * 0.25,
+            (outer_x[-1] + inner_x[-1]) / 2.0,
+            outer_x[-1] * 0.25 + inner_x[-1] * 0.75,
+        ]
+        cap_sizes = [46, 56, 42]
+        fig.add_trace(
+            go.Scatter(
+                x=cap_x,
+                y=[cap_y] * 3,
+                mode="markers",
+                marker=dict(size=cap_sizes, color=CLOUD_COLOR, opacity=1.0, line=dict(width=0)),
                 name="雲",
                 hoverinfo="skip",
                 showlegend=False,
