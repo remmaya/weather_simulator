@@ -12,11 +12,13 @@ Streamlit + Plotly
   ・低気圧と高気圧(両方)
 """
 
+import json
 import math
 import os
 
 import numpy as np
 import streamlit as st
+import streamlit.components.v1 as components
 import plotly.graph_objects as go
 
 from science_utils import (
@@ -112,6 +114,18 @@ with col_input:
         )
         st.session_state.wind_strength_single = strength_single
 
+    st.markdown("**表示スタイル**")
+    if "wind_display_style" not in st.session_state:
+        st.session_state.wind_display_style = "矢印グリッド"
+    display_style = st.radio(
+        "表示スタイル",
+        ["矢印グリッド", "粒子アニメーション"],
+        index=["矢印グリッド", "粒子アニメーション"].index(st.session_state.wind_display_style),
+        key="wind_display_style_radio",
+        label_visibility="collapsed",
+    )
+    st.session_state.wind_display_style = display_style
+
 # ------------------------------------------------------------
 # 気圧中心の設定
 # ------------------------------------------------------------
@@ -136,91 +150,250 @@ else:
 max_strength = max(c.strength_hpa for c in centers)
 
 with col_main:
-    fig = go.Figure()
+    if display_style == "矢印グリッド":
+        fig = go.Figure()
 
-    # ------------------------------------------------------------
-    # 等圧線(気圧の偏差の等高線)
-    # ------------------------------------------------------------
-    grid_n = 70
-    xs = np.linspace(-1.0, 1.0, grid_n)
-    ys = np.linspace(-1.0, 1.0, grid_n)
-    z = np.array([[pressure_deviation(x, y, centers) for x in xs] for y in ys])
+        # ------------------------------------------------------------
+        # 等圧線(気圧の偏差の等高線)
+        # ------------------------------------------------------------
+        grid_n = 70
+        xs = np.linspace(-1.0, 1.0, grid_n)
+        ys = np.linspace(-1.0, 1.0, grid_n)
+        z = np.array([[pressure_deviation(x, y, centers) for x in xs] for y in ys])
 
-    fig.add_trace(
-        go.Contour(
-            x=xs, y=ys, z=z,
-            contours=dict(
-                coloring="lines",
-                start=-max_strength - 2.0,
-                end=max_strength + 2.0,
-                size=4.0,
-            ),
-            line=dict(width=1.3),
-            colorscale=[[0.0, ISOBAR_LOW_COLOR], [0.5, ISOBAR_MID_COLOR], [1.0, ISOBAR_HIGH_COLOR]],
-            zmin=-max_strength - 2.0,
-            zmax=max_strength + 2.0,
-            showscale=False,
-            hoverinfo="skip",
-        )
-    )
-
-    # ------------------------------------------------------------
-    # 風向風速の矢印グリッド
-    # ------------------------------------------------------------
-    grid_pts = np.linspace(-0.9, 0.9, 9)
-    arrow_data = []
-    for gx in grid_pts:
-        for gy in grid_pts:
-            # 気圧中心に近すぎる点は、無風域・特異点を避けるためスキップする
-            too_close = any(math.hypot(gx - c.x, gy - c.y) < 0.16 for c in centers)
-            if too_close:
-                continue
-            wx, wy, mag = wind_vector_at(float(gx), float(gy), centers)
-            if mag < 1e-9:
-                continue
-            arrow_data.append((gx, gy, wx, wy, mag))
-
-    if arrow_data:
-        max_mag = max(a[4] for a in arrow_data)
-        for gx, gy, wx, wy, mag in arrow_data:
-            length = 0.05 + 0.13 * (mag / max_mag)
-            fig.add_annotation(
-                x=gx + wx * length, y=gy + wy * length,
-                ax=gx, ay=gy,
-                xref="x", yref="y", axref="x", ayref="y",
-                showarrow=True, arrowhead=2, arrowsize=1.0, arrowwidth=2.2,
-                arrowcolor=ARROW_COLOR,
-            )
-
-    # ------------------------------------------------------------
-    # 気圧中心のマーク
-    # ------------------------------------------------------------
-    for c in centers:
-        label = "低" if c.kind == "low" else "高"
-        color = LOW_COLOR if c.kind == "low" else HIGH_COLOR
         fig.add_trace(
-            go.Scatter(
-                x=[c.x], y=[c.y],
-                mode="markers+text",
-                marker=dict(size=30, color=color),
-                text=[label],
-                textfont=dict(size=20, color="white"),
-                textposition="middle center",
+            go.Contour(
+                x=xs, y=ys, z=z,
+                contours=dict(
+                    coloring="lines",
+                    start=-max_strength - 2.0,
+                    end=max_strength + 2.0,
+                    size=4.0,
+                ),
+                line=dict(width=1.3),
+                colorscale=[[0.0, ISOBAR_LOW_COLOR], [0.5, ISOBAR_MID_COLOR], [1.0, ISOBAR_HIGH_COLOR]],
+                zmin=-max_strength - 2.0,
+                zmax=max_strength + 2.0,
+                showscale=False,
                 hoverinfo="skip",
-                showlegend=False,
             )
         )
 
-    fig.update_layout(
-        xaxis=dict(range=[-1.05, 1.05], visible=False, fixedrange=True, scaleanchor="y"),
-        yaxis=dict(range=[-1.05, 1.05], visible=False, fixedrange=True),
-        plot_bgcolor="white",
-        margin=dict(l=20, r=20, t=20, b=20),
-        height=560,
-        showlegend=False,
-    )
+        # ------------------------------------------------------------
+        # 風向風速の矢印グリッド
+        # ------------------------------------------------------------
+        grid_pts = np.linspace(-0.9, 0.9, 9)
+        arrow_data = []
+        for gx in grid_pts:
+            for gy in grid_pts:
+                # 気圧中心に近すぎる点は、無風域・特異点を避けるためスキップする
+                too_close = any(math.hypot(gx - c.x, gy - c.y) < 0.16 for c in centers)
+                if too_close:
+                    continue
+                wx, wy, mag = wind_vector_at(float(gx), float(gy), centers)
+                if mag < 1e-9:
+                    continue
+                arrow_data.append((gx, gy, wx, wy, mag))
 
-    st.plotly_chart(fig, use_container_width=True)
+        if arrow_data:
+            max_mag = max(a[4] for a in arrow_data)
+            for gx, gy, wx, wy, mag in arrow_data:
+                length = 0.05 + 0.13 * (mag / max_mag)
+                fig.add_annotation(
+                    x=gx + wx * length, y=gy + wy * length,
+                    ax=gx, ay=gy,
+                    xref="x", yref="y", axref="x", ayref="y",
+                    showarrow=True, arrowhead=2, arrowsize=1.0, arrowwidth=2.2,
+                    arrowcolor=ARROW_COLOR,
+                )
+
+        # ------------------------------------------------------------
+        # 気圧中心のマーク
+        # ------------------------------------------------------------
+        for c in centers:
+            label = "低" if c.kind == "low" else "高"
+            color = LOW_COLOR if c.kind == "low" else HIGH_COLOR
+            fig.add_trace(
+                go.Scatter(
+                    x=[c.x], y=[c.y],
+                    mode="markers+text",
+                    marker=dict(size=30, color=color),
+                    text=[label],
+                    textfont=dict(size=20, color="white"),
+                    textposition="middle center",
+                    hoverinfo="skip",
+                    showlegend=False,
+                )
+            )
+
+        fig.update_layout(
+            xaxis=dict(range=[-1.05, 1.05], visible=False, fixedrange=True, scaleanchor="y"),
+            yaxis=dict(range=[-1.05, 1.05], visible=False, fixedrange=True),
+            plot_bgcolor="white",
+            margin=dict(l=20, r=20, t=20, b=20),
+            height=560,
+            showlegend=False,
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    else:
+        # ------------------------------------------------------------
+        # 粒子アニメーション(Windy風)。
+        # StreamlitやPlotlyの標準機能だとなめらかなアニメーションが難しいため、
+        # HTML5 Canvas + JavaScriptをそのまま埋め込んで描画する。
+        # 風向風速の計算式(気圧勾配→コリオリ偏向)は wind_vector_at と同じものを
+        # JavaScript側に移植しているので、Python側と同じ結果になるはず。
+        # ------------------------------------------------------------
+        centers_json = json.dumps([
+            {"x": c.x, "y": c.y, "kind": c.kind, "strength": c.strength_hpa, "radius": c.radius}
+            for c in centers
+        ])
+
+        particle_html = f"""
+        <canvas id="windCanvas" width="700" height="700"
+                style="width:100%; max-width:700px; display:block; margin:0 auto;
+                       background:#dceefb; border-radius:8px;"></canvas>
+        <script>
+        (function() {{
+            const centers = {centers_json};
+            const deflectionDeg = {CORIOLIS_DEFLECTION_DEG};
+            const canvas = document.getElementById('windCanvas');
+            const ctx = canvas.getContext('2d');
+            const W = canvas.width, H = canvas.height;
+
+            const LOW_COLOR = '{LOW_COLOR}';
+            const HIGH_COLOR = '{HIGH_COLOR}';
+            const PARTICLE_COLOR = '#1f3a52';
+
+            function toCanvas(x, y) {{
+                return [(x + 1) / 2 * W, (1 - y) / 2 * H];
+            }}
+
+            function pressureGradient(x, y) {{
+                let gx = 0, gy = 0;
+                for (const c of centers) {{
+                    const sign = c.kind === 'low' ? -1 : 1;
+                    const dx = x - c.x, dy = y - c.y;
+                    const r2 = dx * dx + dy * dy;
+                    const val = sign * c.strength * Math.exp(-r2 / (2 * c.radius * c.radius));
+                    gx += val * (-dx / (c.radius * c.radius));
+                    gy += val * (-dy / (c.radius * c.radius));
+                }}
+                return [gx, gy];
+            }}
+
+            function windVectorAt(x, y) {{
+                const [gx, gy] = pressureGradient(x, y);
+                const gradMag = Math.hypot(gx, gy);
+                if (gradMag < 1e-9) return [0, 0, 0];
+                const dxDir = -gx / gradMag, dyDir = -gy / gradMag;
+                const theta = deflectionDeg * Math.PI / 180;
+                const wx = dxDir * Math.cos(theta) + dyDir * Math.sin(theta);
+                const wy = -dxDir * Math.sin(theta) + dyDir * Math.cos(theta);
+                return [wx, wy, gradMag];
+            }}
+
+            function randomPosition() {{
+                let x, y, tooClose;
+                do {{
+                    x = (Math.random() * 2 - 1) * 0.95;
+                    y = (Math.random() * 2 - 1) * 0.95;
+                    tooClose = centers.some(c => Math.hypot(x - c.x, y - c.y) < 0.16);
+                }} while (tooClose);
+                return [x, y];
+            }}
+
+            const PARTICLE_COUNT = 260;
+            const particles = [];
+            for (let i = 0; i < PARTICLE_COUNT; i++) {{
+                const [x, y] = randomPosition();
+                particles.push({{x: x, y: y, age: Math.floor(Math.random() * 120)}});
+            }}
+
+            function drawBackground() {{
+                const ringScale = W / 2;
+                for (const c of centers) {{
+                    const [cx, cy] = toCanvas(c.x, c.y);
+                    const color = c.kind === 'low' ? LOW_COLOR : HIGH_COLOR;
+
+                    ctx.strokeStyle = color;
+                    ctx.globalAlpha = 0.55;
+                    ctx.lineWidth = 1.3;
+                    [0.6, 1.2, 1.8].forEach(function(rr) {{
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, c.radius * rr * ringScale, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }});
+                    ctx.globalAlpha = 1.0;
+
+                    ctx.fillStyle = color;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 16px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(c.kind === 'low' ? '低' : '高', cx, cy + 1);
+                }}
+            }}
+
+            const MAX_AGE = 240;
+            const STEP_SCALE = 0.00022;
+            const MIN_STEP = 0.0012;
+            const MAX_STEP = 0.012;
+
+            function updateParticle(p) {{
+                const result = windVectorAt(p.x, p.y);
+                const wx = result[0], wy = result[1], mag = result[2];
+                let step = mag * STEP_SCALE;
+                step = Math.max(MIN_STEP, Math.min(MAX_STEP, step));
+                p.x += wx * step;
+                p.y += wy * step;
+                p.age += 1;
+
+                const outOfBounds = Math.abs(p.x) > 1.02 || Math.abs(p.y) > 1.02;
+                const tooClose = centers.some(c => Math.hypot(p.x - c.x, p.y - c.y) < 0.08);
+                if (outOfBounds || tooClose || p.age > MAX_AGE) {{
+                    const pos = randomPosition();
+                    p.x = pos[0];
+                    p.y = pos[1];
+                    p.age = 0;
+                }}
+            }}
+
+            function frame() {{
+                ctx.fillStyle = 'rgba(220, 238, 251, 0.14)';
+                ctx.fillRect(0, 0, W, H);
+
+                drawBackground();
+
+                ctx.fillStyle = PARTICLE_COLOR;
+                for (const p of particles) {{
+                    updateParticle(p);
+                    const pos = toCanvas(p.x, p.y);
+                    ctx.beginPath();
+                    ctx.arc(pos[0], pos[1], 2.2, 0, Math.PI * 2);
+                    ctx.fill();
+                }}
+
+                requestAnimationFrame(frame);
+            }}
+
+            ctx.fillStyle = '#dceefb';
+            ctx.fillRect(0, 0, W, H);
+            frame();
+        }})();
+        </script>
+        """
+        components.html(particle_html, height=650)
+        st.caption(
+            "点(粒子)が実際の風の流れのように動きます。低気圧のまわりでは反時計回りに"
+            "渦を巻きながら中心に吸い込まれ、高気圧のまわりでは時計回りに渦を巻きながら"
+            "外側へ広がっていく様子に注目してみましょう。"
+        )
 
 with col_values:
     st.markdown("**図の読み方**")
