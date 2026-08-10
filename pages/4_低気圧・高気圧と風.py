@@ -115,12 +115,13 @@ with col_input:
         st.session_state.wind_strength_single = strength_single
 
     st.markdown("**表示スタイル**")
+    DISPLAY_STYLE_OPTIONS = ["矢印グリッド", "粒子アニメーション", "矢印+粒子アニメーション"]
     if "wind_display_style" not in st.session_state:
-        st.session_state.wind_display_style = "矢印グリッド"
+        st.session_state.wind_display_style = DISPLAY_STYLE_OPTIONS[0]
     display_style = st.radio(
         "表示スタイル",
-        ["矢印グリッド", "粒子アニメーション"],
-        index=["矢印グリッド", "粒子アニメーション"].index(st.session_state.wind_display_style),
+        DISPLAY_STYLE_OPTIONS,
+        index=DISPLAY_STYLE_OPTIONS.index(st.session_state.wind_display_style),
         key="wind_display_style_radio",
         label_visibility="collapsed",
     )
@@ -239,12 +240,14 @@ with col_main:
 
     else:
         # ------------------------------------------------------------
-        # 粒子アニメーション(Windy風)。
+        # 粒子アニメーション(Windy風)。「矢印+粒子アニメーション」の場合は、
+        # 同じCanvas上に静的な矢印グリッドも重ねて描画する。
         # StreamlitやPlotlyの標準機能だとなめらかなアニメーションが難しいため、
         # HTML5 Canvas + JavaScriptをそのまま埋め込んで描画する。
         # 風向風速の計算式(気圧勾配→コリオリ偏向)は wind_vector_at と同じものを
         # JavaScript側に移植しているので、Python側と同じ結果になるはず。
         # ------------------------------------------------------------
+        show_arrows_js = "true" if display_style == "矢印+粒子アニメーション" else "false"
         centers_json = json.dumps([
             {"x": c.x, "y": c.y, "kind": c.kind, "strength": c.strength_hpa, "radius": c.radius}
             for c in centers
@@ -258,6 +261,7 @@ with col_main:
         (function() {{
             const centers = {centers_json};
             const deflectionDeg = {CORIOLIS_DEFLECTION_DEG};
+            const SHOW_ARROWS = {show_arrows_js};
             const canvas = document.getElementById('windCanvas');
             const ctx = canvas.getContext('2d');
             const W = canvas.width, H = canvas.height;
@@ -265,6 +269,7 @@ with col_main:
             const LOW_COLOR = '{LOW_COLOR}';
             const HIGH_COLOR = '{HIGH_COLOR}';
             const PARTICLE_COLOR = '#1f3a52';
+            const ARROW_COLOR = '{ARROW_COLOR}';
 
             function toCanvas(x, y) {{
                 return [(x + 1) / 2 * W, (1 - y) / 2 * H];
@@ -309,6 +314,59 @@ with col_main:
             for (let i = 0; i < PARTICLE_COUNT; i++) {{
                 const [x, y] = randomPosition();
                 particles.push({{x: x, y: y, age: Math.floor(Math.random() * 120)}});
+            }}
+
+            // 矢印グリッド(Plotly版と同じ9x9グリッド)。値は変わらないので最初に1度だけ計算する。
+            function computeArrowGrid() {{
+                const n = 9;
+                const gridPts = [];
+                for (let i = 0; i < n; i++) {{
+                    gridPts.push(-0.9 + (1.8 * i) / (n - 1));
+                }}
+                const data = [];
+                for (const gx of gridPts) {{
+                    for (const gy of gridPts) {{
+                        const tooClose = centers.some(c => Math.hypot(gx - c.x, gy - c.y) < 0.16);
+                        if (tooClose) continue;
+                        const result = windVectorAt(gx, gy);
+                        const wx = result[0], wy = result[1], mag = result[2];
+                        if (mag < 1e-9) continue;
+                        data.push({{x: gx, y: gy, wx: wx, wy: wy, mag: mag}});
+                    }}
+                }}
+                return data;
+            }}
+            const arrowGrid = SHOW_ARROWS ? computeArrowGrid() : [];
+            const arrowMaxMag = arrowGrid.length > 0 ? Math.max(...arrowGrid.map(a => a.mag)) : 1.0;
+
+            function drawArrows() {{
+                ctx.strokeStyle = ARROW_COLOR;
+                ctx.fillStyle = ARROW_COLOR;
+                ctx.lineWidth = 2;
+                for (const a of arrowGrid) {{
+                    const length = 0.05 + 0.13 * (a.mag / arrowMaxMag);
+                    const p0 = toCanvas(a.x, a.y);
+                    const p1 = toCanvas(a.x + a.wx * length, a.y + a.wy * length);
+                    ctx.beginPath();
+                    ctx.moveTo(p0[0], p0[1]);
+                    ctx.lineTo(p1[0], p1[1]);
+                    ctx.stroke();
+
+                    const angle = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
+                    const headLen = 8;
+                    ctx.beginPath();
+                    ctx.moveTo(p1[0], p1[1]);
+                    ctx.lineTo(
+                        p1[0] - headLen * Math.cos(angle - Math.PI / 6),
+                        p1[1] - headLen * Math.sin(angle - Math.PI / 6)
+                    );
+                    ctx.lineTo(
+                        p1[0] - headLen * Math.cos(angle + Math.PI / 6),
+                        p1[1] - headLen * Math.sin(angle + Math.PI / 6)
+                    );
+                    ctx.closePath();
+                    ctx.fill();
+                }}
             }}
 
             function drawBackground() {{
@@ -369,6 +427,9 @@ with col_main:
                 ctx.fillRect(0, 0, W, H);
 
                 drawBackground();
+                if (SHOW_ARROWS) {{
+                    drawArrows();
+                }}
 
                 ctx.fillStyle = PARTICLE_COLOR;
                 for (const p of particles) {{
