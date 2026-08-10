@@ -127,9 +127,9 @@ elif preset == "高気圧のみ":
     ]
 else:
     centers = [
-        PressureCenter(x=-0.4, y=0.0, kind="low",
+        PressureCenter(x=-0.35, y=-0.3, kind="low",
                         strength_hpa=st.session_state.wind_strength_low, radius=CENTER_RADIUS),
-        PressureCenter(x=0.4, y=0.0, kind="high",
+        PressureCenter(x=0.35, y=0.3, kind="high",
                         strength_hpa=st.session_state.wind_strength_high, radius=CENTER_RADIUS),
     ]
 
