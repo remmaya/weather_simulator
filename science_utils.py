@@ -17,6 +17,7 @@ CSVファイルの形式:
 """
 
 from dataclasses import dataclass
+import math
 import pandas as pd
 import numpy as np
 
@@ -387,3 +388,86 @@ def compute_foehn_state(
         leeward_relative_humidity_percent=leeward_relative_humidity_percent,
         temperature_rise_c=temperature_rise_c,
     )
+
+
+# ==============================================================
+# 低気圧・高気圧のまわりの風シミュレーター用の計算処理
+#
+# 中学校向けの簡略モデルの考え方:
+#   ・気圧配置は、低気圧・高気圧のそれぞれの中心を中心とした
+#     なだらかな気圧の山・谷(ガウス分布)を重ね合わせて表現する。
+#   ・風は「気圧が下がる方向」(気圧配置の最も急な下り坂の向き、
+#     等圧線にほぼ直角な向き)に吹こうとするが、地球の自転の影響で
+#     まっすぐには吹かず、その向きから時計回りに一定の角度だけそれる
+#     (北半球の場合。これにより、低気圧のまわりは反時計回りに吹き込み、
+#     高気圧のまわりは時計回りに吹き出す、という結果になる)。
+#   ・風の強さは、その地点での気圧の傾き(等圧線の混み具合)に比例する
+#     ものとする。
+# ==============================================================
+
+CORIOLIS_DEFLECTION_DEG = 30.0  # 教材用の簡略値:等圧線に直角な向きからのずれ角[度]
+
+
+@dataclass
+class PressureCenter:
+    """低気圧・高気圧ひとつぶんの気圧配置を表すクラス"""
+    x: float             # 中心のx座標
+    y: float              # 中心のy座標
+    kind: str             # "low"(低気圧) または "high"(高気圧)
+    strength_hpa: float   # 周囲との気圧差[hPa](大きいほど等圧線が混み合う)
+    radius: float = 0.5   # 気圧配置の広がりのスケール
+
+
+def pressure_deviation(x: float, y: float, centers) -> float:
+    """
+    指定した地点における、周囲(基準気圧)からの気圧の偏差を求める。
+    複数の低気圧・高気圧がある場合は、それぞれの寄与を単純に足し合わせる。
+    """
+    total = 0.0
+    for c in centers:
+        sign = -1.0 if c.kind == "low" else 1.0
+        dx, dy = x - c.x, y - c.y
+        r2 = dx * dx + dy * dy
+        total += sign * c.strength_hpa * math.exp(-r2 / (2.0 * c.radius ** 2))
+    return total
+
+
+def pressure_gradient(x: float, y: float, centers):
+    """
+    指定した地点における気圧の勾配(x方向・y方向の傾き)を、解析的に求める。
+    pressure_deviation をxとyでそれぞれ偏微分した式に対応する。
+    """
+    gx = gy = 0.0
+    for c in centers:
+        sign = -1.0 if c.kind == "low" else 1.0
+        dx, dy = x - c.x, y - c.y
+        r2 = dx * dx + dy * dy
+        val = sign * c.strength_hpa * math.exp(-r2 / (2.0 * c.radius ** 2))
+        gx += val * (-dx / c.radius ** 2)
+        gy += val * (-dy / c.radius ** 2)
+    return gx, gy
+
+
+def wind_vector_at(x: float, y: float, centers, deflection_deg: float = CORIOLIS_DEFLECTION_DEG):
+    """
+    指定した地点における風向(単位ベクトル)と、風の強さの目安を求める。
+
+    戻り値は (風向のx成分, 風向のy成分, 風の強さの目安) のタプル。
+    風の強さの目安は気圧勾配の大きさそのもの(相対的な比較にのみ使う値)。
+    気圧勾配がほぼ0(無風とみなせる点)の場合は (0.0, 0.0, 0.0) を返す。
+    """
+    gx, gy = pressure_gradient(x, y, centers)
+    grad_mag = math.hypot(gx, gy)
+    if grad_mag < 1e-9:
+        return 0.0, 0.0, 0.0
+
+    # 気圧が下がる方向(高圧側から低圧側へ向かう向き)の単位ベクトル
+    dx_dir, dy_dir = -gx / grad_mag, -gy / grad_mag
+
+    # そこから時計回りに deflection_deg だけ回転させる
+    # (北半球でのコリオリの力による偏向を、模式的に一定角度のずれとして表現)
+    theta = math.radians(deflection_deg)
+    wx = dx_dir * math.cos(theta) + dy_dir * math.sin(theta)
+    wy = -dx_dir * math.sin(theta) + dy_dir * math.cos(theta)
+
+    return wx, wy, grad_mag
