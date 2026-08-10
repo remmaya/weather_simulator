@@ -300,10 +300,14 @@ with col_main:
             }}
 
             function randomPosition() {{
+                // 円形の領域内に、面積が一様になるように配置する
+                // (半径rを一様乱数にすると中心付近が濃くなってしまうため、sqrt(乱数)を使う)
                 let x, y, tooClose;
                 do {{
-                    x = (Math.random() * 2 - 1) * 0.95;
-                    y = (Math.random() * 2 - 1) * 0.95;
+                    const angle = Math.random() * 2 * Math.PI;
+                    const r = Math.sqrt(Math.random()) * 0.92;
+                    x = r * Math.cos(angle);
+                    y = r * Math.sin(angle);
                     tooClose = centers.some(c => Math.hypot(x - c.x, y - c.y) < 0.16);
                 }} while (tooClose);
                 return [x, y];
@@ -316,55 +320,88 @@ with col_main:
                 particles.push({{x: x, y: y, age: Math.floor(Math.random() * 120)}});
             }}
 
-            // 矢印グリッド。粒子と重ねて表示するときはごちゃつかないよう、Plotly版(9x9)より間引く。
-            function computeArrowGrid() {{
-                const n = 6;
-                const gridPts = [];
-                for (let i = 0; i < n; i++) {{
-                    gridPts.push(-0.85 + (1.7 * i) / (n - 1));
+            // 粒子の移動に使うのと同じ刻み幅(矢印=流線も、粒子と同じ経路をたどらせるため)
+            const STEP_SCALE = 0.00022;
+            const MIN_STEP = 0.0012;
+            const MAX_STEP = 0.012;
+
+            // ある地点から実際に風向風速の式に従って軌跡をたどり、1本の流線を求める。
+            // 低気圧は外側から吸い込まれる向き、高気圧は中心から吹き出す向きにたどることで、
+            // 渦を巻きながら中心に近づく・遠ざかる「銀河の腕」のような曲線になる。
+            function traceStreamline(startX, startY, maxSteps) {{
+                const pts = [[startX, startY]];
+                let x = startX, y = startY;
+                for (let i = 0; i < maxSteps; i++) {{
+                    const result = windVectorAt(x, y);
+                    const wx = result[0], wy = result[1], mag = result[2];
+                    if (mag < 1e-9) break;
+                    let step = mag * STEP_SCALE;
+                    step = Math.max(MIN_STEP, Math.min(MAX_STEP, step));
+                    x += wx * step;
+                    y += wy * step;
+                    pts.push([x, y]);
+                    if (Math.hypot(x, y) > 1.0) break;
+                    const tooClose = centers.some(c => Math.hypot(x - c.x, y - c.y) < 0.06);
+                    if (tooClose) break;
                 }}
-                const data = [];
-                for (const gx of gridPts) {{
-                    for (const gy of gridPts) {{
-                        const tooClose = centers.some(c => Math.hypot(gx - c.x, gy - c.y) < 0.18);
-                        if (tooClose) continue;
-                        const result = windVectorAt(gx, gy);
-                        const wx = result[0], wy = result[1], mag = result[2];
-                        if (mag < 1e-9) continue;
-                        data.push({{x: gx, y: gy, wx: wx, wy: wy, mag: mag}});
+                return pts;
+            }}
+
+            const ARM_COUNT = 6;      // ひとつの気圧中心あたりの腕の本数
+            const ARM_STEPS = 150;    // 1本の腕をたどるステップ数
+
+            function computeArms() {{
+                const arms = [];
+                for (const c of centers) {{
+                    // 低気圧は外側の点から始めて中心へ吸い込まれる経路を、
+                    // 高気圧は中心近くの点から始めて外へ広がる経路をたどる
+                    const startRadius = c.kind === 'low' ? 0.85 : 0.10;
+                    for (let i = 0; i < ARM_COUNT; i++) {{
+                        const angle = (2 * Math.PI * i) / ARM_COUNT;
+                        const sx = c.x + startRadius * Math.cos(angle);
+                        const sy = c.y + startRadius * Math.sin(angle);
+                        const pts = traceStreamline(sx, sy, ARM_STEPS);
+                        if (pts.length > 3) arms.push(pts);
                     }}
                 }}
-                return data;
+                return arms;
             }}
-            const arrowGrid = SHOW_ARROWS ? computeArrowGrid() : [];
-            const arrowMaxMag = arrowGrid.length > 0 ? Math.max(...arrowGrid.map(a => a.mag)) : 1.0;
+            const arms = SHOW_ARROWS ? computeArms() : [];
 
-            function drawArrows() {{
+            function drawArms() {{
                 ctx.save();
-                ctx.globalAlpha = 0.4;
+                ctx.globalAlpha = 0.5;
                 ctx.strokeStyle = ARROW_COLOR;
                 ctx.fillStyle = ARROW_COLOR;
-                ctx.lineWidth = 1.4;
-                for (const a of arrowGrid) {{
-                    const length = 0.06 + 0.13 * (a.mag / arrowMaxMag);
-                    const p0 = toCanvas(a.x, a.y);
-                    const p1 = toCanvas(a.x + a.wx * length, a.y + a.wy * length);
+                ctx.lineWidth = 1.6;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                for (const pts of arms) {{
                     ctx.beginPath();
+                    const p0 = toCanvas(pts[0][0], pts[0][1]);
                     ctx.moveTo(p0[0], p0[1]);
-                    ctx.lineTo(p1[0], p1[1]);
+                    for (let i = 1; i < pts.length; i++) {{
+                        const p = toCanvas(pts[i][0], pts[i][1]);
+                        ctx.lineTo(p[0], p[1]);
+                    }}
                     ctx.stroke();
 
-                    const angle = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
-                    const headLen = 6;
+                    // 曲線の終端に矢じりをつけて、流れの向きを示す
+                    const lastIdx = pts.length - 1;
+                    const prevIdx = Math.max(0, pts.length - 4);
+                    const last = toCanvas(pts[lastIdx][0], pts[lastIdx][1]);
+                    const prev = toCanvas(pts[prevIdx][0], pts[prevIdx][1]);
+                    const angle = Math.atan2(last[1] - prev[1], last[0] - prev[0]);
+                    const headLen = 9;
                     ctx.beginPath();
-                    ctx.moveTo(p1[0], p1[1]);
+                    ctx.moveTo(last[0], last[1]);
                     ctx.lineTo(
-                        p1[0] - headLen * Math.cos(angle - Math.PI / 6),
-                        p1[1] - headLen * Math.sin(angle - Math.PI / 6)
+                        last[0] - headLen * Math.cos(angle - Math.PI / 6),
+                        last[1] - headLen * Math.sin(angle - Math.PI / 6)
                     );
                     ctx.lineTo(
-                        p1[0] - headLen * Math.cos(angle + Math.PI / 6),
-                        p1[1] - headLen * Math.sin(angle + Math.PI / 6)
+                        last[0] - headLen * Math.cos(angle + Math.PI / 6),
+                        last[1] - headLen * Math.sin(angle + Math.PI / 6)
                     );
                     ctx.closePath();
                     ctx.fill();
@@ -402,9 +439,6 @@ with col_main:
             }}
 
             const MAX_AGE = 240;
-            const STEP_SCALE = 0.00022;
-            const MIN_STEP = 0.0012;
-            const MAX_STEP = 0.012;
 
             function updateParticle(p) {{
                 const result = windVectorAt(p.x, p.y);
@@ -415,7 +449,7 @@ with col_main:
                 p.y += wy * step;
                 p.age += 1;
 
-                const outOfBounds = Math.abs(p.x) > 1.02 || Math.abs(p.y) > 1.02;
+                const outOfBounds = Math.hypot(p.x, p.y) > 1.0;
                 const tooClose = centers.some(c => Math.hypot(p.x - c.x, p.y - c.y) < 0.08);
                 if (outOfBounds || tooClose || p.age > MAX_AGE) {{
                     const pos = randomPosition();
@@ -431,7 +465,7 @@ with col_main:
 
                 drawBackground();
                 if (SHOW_ARROWS) {{
-                    drawArrows();
+                    drawArms();
                 }}
 
                 ctx.fillStyle = PARTICLE_COLOR;
