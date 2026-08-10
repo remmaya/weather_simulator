@@ -309,24 +309,24 @@ with col_main:
                 return [x, y];
             }}
 
-            const PARTICLE_COUNT = 260;
+            const PARTICLE_COUNT = SHOW_ARROWS ? 150 : 260;
             const particles = [];
             for (let i = 0; i < PARTICLE_COUNT; i++) {{
                 const [x, y] = randomPosition();
                 particles.push({{x: x, y: y, age: Math.floor(Math.random() * 120)}});
             }}
 
-            // 矢印グリッド(Plotly版と同じ9x9グリッド)。値は変わらないので最初に1度だけ計算する。
+            // 矢印グリッド。粒子と重ねて表示するときはごちゃつかないよう、Plotly版(9x9)より間引く。
             function computeArrowGrid() {{
-                const n = 9;
+                const n = 6;
                 const gridPts = [];
                 for (let i = 0; i < n; i++) {{
-                    gridPts.push(-0.9 + (1.8 * i) / (n - 1));
+                    gridPts.push(-0.85 + (1.7 * i) / (n - 1));
                 }}
                 const data = [];
                 for (const gx of gridPts) {{
                     for (const gy of gridPts) {{
-                        const tooClose = centers.some(c => Math.hypot(gx - c.x, gy - c.y) < 0.16);
+                        const tooClose = centers.some(c => Math.hypot(gx - c.x, gy - c.y) < 0.18);
                         if (tooClose) continue;
                         const result = windVectorAt(gx, gy);
                         const wx = result[0], wy = result[1], mag = result[2];
@@ -340,11 +340,13 @@ with col_main:
             const arrowMaxMag = arrowGrid.length > 0 ? Math.max(...arrowGrid.map(a => a.mag)) : 1.0;
 
             function drawArrows() {{
+                ctx.save();
+                ctx.globalAlpha = 0.4;
                 ctx.strokeStyle = ARROW_COLOR;
                 ctx.fillStyle = ARROW_COLOR;
-                ctx.lineWidth = 2;
+                ctx.lineWidth = 1.4;
                 for (const a of arrowGrid) {{
-                    const length = 0.05 + 0.13 * (a.mag / arrowMaxMag);
+                    const length = 0.06 + 0.13 * (a.mag / arrowMaxMag);
                     const p0 = toCanvas(a.x, a.y);
                     const p1 = toCanvas(a.x + a.wx * length, a.y + a.wy * length);
                     ctx.beginPath();
@@ -353,7 +355,7 @@ with col_main:
                     ctx.stroke();
 
                     const angle = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
-                    const headLen = 8;
+                    const headLen = 6;
                     ctx.beginPath();
                     ctx.moveTo(p1[0], p1[1]);
                     ctx.lineTo(
@@ -367,6 +369,7 @@ with col_main:
                     ctx.closePath();
                     ctx.fill();
                 }}
+                ctx.restore();
             }}
 
             function drawBackground() {{
