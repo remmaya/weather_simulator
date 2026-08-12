@@ -289,6 +289,17 @@ with col_main:
                 return [(x + 1) / 2 * W, (1 - y) / 2 * H];
             }}
 
+            function pressureDeviation(x, y) {{
+                let total = 0;
+                for (const c of centers) {{
+                    const sign = c.kind === 'low' ? -1 : 1;
+                    const dx = x - c.x, dy = y - c.y;
+                    const r2 = dx * dx + dy * dy;
+                    total += sign * c.strength * Math.exp(-r2 / (2 * c.radius * c.radius));
+                }}
+                return total;
+            }}
+
             function pressureGradient(x, y) {{
                 let gx = 0, gy = 0;
                 for (const c of centers) {{
@@ -423,27 +434,120 @@ with col_main:
                 ctx.restore();
             }}
 
-            function drawBackground() {{
-                const ringScale = W / 2;
+            // ------------------------------------------------------------
+            // 等圧線(マーチングスクエア法)。
+            // Plotly版(矢印グリッド)と同じく、実際に合成した気圧場から等高線を求めるので、
+            // 低気圧・高気圧が近づいたときの等圧線の歪みも正しく表現できる。
+            // ------------------------------------------------------------
+            function hexToRgb(hex) {{
+                const v = parseInt(hex.slice(1), 16);
+                return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+            }}
+            function lerpColor(c1, c2, t) {{
+                return [0, 1, 2].map(i => Math.round(c1[i] + (c2[i] - c1[i]) * t));
+            }}
+            function colorForLevel(L, levelMax) {{
+                const lowRgb = hexToRgb(LOW_COLOR);
+                const midRgb = [170, 170, 170];
+                const highRgb = hexToRgb(HIGH_COLOR);
+                const t = (L + levelMax) / (2 * levelMax); // 0(低気圧側)〜1(高気圧側)
+                const rgb = t < 0.5 ? lerpColor(lowRgb, midRgb, t / 0.5) : lerpColor(midRgb, highRgb, (t - 0.5) / 0.5);
+                return `rgb(${{rgb[0]}},${{rgb[1]}},${{rgb[2]}})`;
+            }}
+
+            // ある1つのレベルLについて、格子(zGrid)からその等高線の線分群を求める
+            function marchingSquaresSegments(gxs, gys, zGrid, level) {{
+                const nx = gxs.length, ny = gys.length;
+                const segments = [];
+                for (let j = 0; j < ny - 1; j++) {{
+                    for (let i = 0; i < nx - 1; i++) {{
+                        const x0 = gxs[i], x1 = gxs[i + 1];
+                        const y0 = gys[j], y1 = gys[j + 1];
+                        const zBL = zGrid[j][i], zBR = zGrid[j][i + 1];
+                        const zTL = zGrid[j + 1][i], zTR = zGrid[j + 1][i + 1];
+                        const pts = [];
+                        if ((zBL - level) * (zBR - level) < 0) {{
+                            const t = (level - zBL) / (zBR - zBL);
+                            pts.push([x0 + t * (x1 - x0), y0]);
+                        }}
+                        if ((zBR - level) * (zTR - level) < 0) {{
+                            const t = (level - zBR) / (zTR - zBR);
+                            pts.push([x1, y0 + t * (y1 - y0)]);
+                        }}
+                        if ((zTL - level) * (zTR - level) < 0) {{
+                            const t = (level - zTL) / (zTR - zTL);
+                            pts.push([x0 + t * (x1 - x0), y1]);
+                        }}
+                        if ((zBL - level) * (zTL - level) < 0) {{
+                            const t = (level - zBL) / (zTL - zBL);
+                            pts.push([x0, y0 + t * (y1 - y0)]);
+                        }}
+                        if (pts.length === 2) {{
+                            segments.push([pts[0], pts[1]]);
+                        }} else if (pts.length === 4) {{
+                            // 鞍点(まれなケース):単純に発見順でペアにする
+                            segments.push([pts[0], pts[1]]);
+                            segments.push([pts[2], pts[3]]);
+                        }}
+                    }}
+                }}
+                return segments;
+            }}
+
+            function buildIsobars() {{
+                const GRID_N = 55;
+                const gxs = [], gys = [];
+                for (let i = 0; i < GRID_N; i++) {{
+                    gxs.push(-1.0 + (2.0 * i) / (GRID_N - 1));
+                    gys.push(-1.0 + (2.0 * i) / (GRID_N - 1));
+                }}
+                const zGrid = [];
+                for (let j = 0; j < GRID_N; j++) {{
+                    const row = [];
+                    for (let i = 0; i < GRID_N; i++) {{
+                        row.push(pressureDeviation(gxs[i], gys[j]));
+                    }}
+                    zGrid.push(row);
+                }}
+
+                const LEVEL_STEP = 4.0, BOLD_STEP = 20.0;
+                const totalMaxStrength = Math.max(...centers.map(c => c.strength));
+                const levelMax = Math.ceil((totalMaxStrength + LEVEL_STEP) / LEVEL_STEP) * LEVEL_STEP;
+
+                const isobars = [];
+                for (let L = -levelMax; L <= levelMax + 1e-9; L += LEVEL_STEP) {{
+                    if (Math.abs(L) < 1e-9) continue; // 0hPa(基準面)のラインは引かない
+                    const isBold = Math.round(L) % 20 === 0;
+                    const segments = marchingSquaresSegments(gxs, gys, zGrid, L);
+                    if (segments.length > 0) {{
+                        isobars.push({{level: L, bold: isBold, color: colorForLevel(L, levelMax), segments: segments}});
+                    }}
+                }}
+                return isobars;
+            }}
+            const isobars = buildIsobars();
+
+            function drawIsobars() {{
+                for (const iso of isobars) {{
+                    ctx.strokeStyle = iso.color;
+                    ctx.globalAlpha = iso.bold ? 0.8 : 0.45;
+                    ctx.lineWidth = iso.bold ? 2.4 : 1.1;
+                    ctx.beginPath();
+                    for (const seg of iso.segments) {{
+                        const p0 = toCanvas(seg[0][0], seg[0][1]);
+                        const p1 = toCanvas(seg[1][0], seg[1][1]);
+                        ctx.moveTo(p0[0], p0[1]);
+                        ctx.lineTo(p1[0], p1[1]);
+                    }}
+                    ctx.stroke();
+                }}
+                ctx.globalAlpha = 1.0;
+            }}
+
+            function drawCenterMarkers() {{
                 for (const c of centers) {{
                     const [cx, cy] = toCanvas(c.x, c.y);
                     const color = c.kind === 'low' ? LOW_COLOR : HIGH_COLOR;
-
-                    // 気圧偏差 = 強さ * exp(-r^2 / (2*radius^2)) を r について解くことで、
-                    // 「気圧差がちょうどLになる半径」を厳密に求める(4hPaごと、20hPaごとに太線)。
-                    // ※2つの中心が重なる場所ではこの円は近似になる(実際の等圧線は歪む)。
-                    for (let L = 4; L < c.strength; L += 4) {{
-                        const ratio = L / c.strength;
-                        const r = c.radius * Math.sqrt(-2 * Math.log(ratio));
-                        const isBold = (L % 20 === 0);
-                        ctx.strokeStyle = color;
-                        ctx.globalAlpha = isBold ? 0.75 : 0.4;
-                        ctx.lineWidth = isBold ? 2.4 : 1.1;
-                        ctx.beginPath();
-                        ctx.arc(cx, cy, r * ringScale, 0, Math.PI * 2);
-                        ctx.stroke();
-                    }}
-                    ctx.globalAlpha = 1.0;
 
                     ctx.fillStyle = color;
                     ctx.beginPath();
@@ -483,7 +587,8 @@ with col_main:
                 ctx.fillStyle = 'rgba(220, 238, 251, 0.14)';
                 ctx.fillRect(0, 0, W, H);
 
-                drawBackground();
+                drawIsobars();
+                drawCenterMarkers();
                 if (SHOW_ARROWS) {{
                     drawArms();
                 }}
