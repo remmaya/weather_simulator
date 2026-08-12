@@ -59,7 +59,8 @@ st.markdown(
 st.caption(
     "※このシミュレーターでは、気圧が下がる方向(等圧線にほぼ直角な向き)から、"
     f"時計回りに{CORIOLIS_DEFLECTION_DEG:.0f}°だけそれた向きに風が吹くものとして計算しています。"
-    "風の強さは、その地点での等圧線の混み具合(気圧の傾き)に比例するものとしています"
+    "風の強さは、その地点での等圧線の混み具合(気圧の傾き)に比例するものとしています。"
+    "等圧線は天気図と同じく4hPaごとに引き、20hPaごとに太線にしています"
     "(実際の大気の複雑な動きを精密に再現したものではない、中学校教材用の簡略モデルです)。"
 )
 
@@ -155,26 +156,39 @@ with col_main:
         fig = go.Figure()
 
         # ------------------------------------------------------------
-        # 等圧線(気圧の偏差の等高線)
+        # 等圧線(気圧の偏差の等高線)。天気図の慣習にあわせて、
+        # 4hPaごとに細線、20hPaごとに太線を引く。
         # ------------------------------------------------------------
         grid_n = 70
         xs = np.linspace(-1.0, 1.0, grid_n)
         ys = np.linspace(-1.0, 1.0, grid_n)
         z = np.array([[pressure_deviation(x, y, centers) for x in xs] for y in ys])
 
+        LEVEL_STEP = 4.0
+        BOLD_STEP = 20.0
+        level_max = math.ceil((max_strength + LEVEL_STEP) / LEVEL_STEP) * LEVEL_STEP
+        bold_max = math.ceil(level_max / BOLD_STEP) * BOLD_STEP
+
+        # 細線(4hPaごと)
         fig.add_trace(
             go.Contour(
                 x=xs, y=ys, z=z,
-                contours=dict(
-                    coloring="lines",
-                    start=-max_strength - 2.0,
-                    end=max_strength + 2.0,
-                    size=4.0,
-                ),
-                line=dict(width=1.3),
+                contours=dict(coloring="lines", start=-level_max, end=level_max, size=LEVEL_STEP),
+                line=dict(width=1.1),
                 colorscale=[[0.0, ISOBAR_LOW_COLOR], [0.5, ISOBAR_MID_COLOR], [1.0, ISOBAR_HIGH_COLOR]],
-                zmin=-max_strength - 2.0,
-                zmax=max_strength + 2.0,
+                zmin=-level_max, zmax=level_max,
+                showscale=False,
+                hoverinfo="skip",
+            )
+        )
+        # 太線(20hPaごと)。色のスケールは細線と揃えて、同じ値なら同じ色になるようにする。
+        fig.add_trace(
+            go.Contour(
+                x=xs, y=ys, z=z,
+                contours=dict(coloring="lines", start=-bold_max, end=bold_max, size=BOLD_STEP),
+                line=dict(width=2.6),
+                colorscale=[[0.0, ISOBAR_LOW_COLOR], [0.5, ISOBAR_MID_COLOR], [1.0, ISOBAR_HIGH_COLOR]],
+                zmin=-level_max, zmax=level_max,
                 showscale=False,
                 hoverinfo="skip",
             )
@@ -415,14 +429,20 @@ with col_main:
                     const [cx, cy] = toCanvas(c.x, c.y);
                     const color = c.kind === 'low' ? LOW_COLOR : HIGH_COLOR;
 
-                    ctx.strokeStyle = color;
-                    ctx.globalAlpha = 0.55;
-                    ctx.lineWidth = 1.3;
-                    [0.6, 1.2, 1.8].forEach(function(rr) {{
+                    // 気圧偏差 = 強さ * exp(-r^2 / (2*radius^2)) を r について解くことで、
+                    // 「気圧差がちょうどLになる半径」を厳密に求める(4hPaごと、20hPaごとに太線)。
+                    // ※2つの中心が重なる場所ではこの円は近似になる(実際の等圧線は歪む)。
+                    for (let L = 4; L < c.strength; L += 4) {{
+                        const ratio = L / c.strength;
+                        const r = c.radius * Math.sqrt(-2 * Math.log(ratio));
+                        const isBold = (L % 20 === 0);
+                        ctx.strokeStyle = color;
+                        ctx.globalAlpha = isBold ? 0.75 : 0.4;
+                        ctx.lineWidth = isBold ? 2.4 : 1.1;
                         ctx.beginPath();
-                        ctx.arc(cx, cy, c.radius * rr * ringScale, 0, Math.PI * 2);
+                        ctx.arc(cx, cy, r * ringScale, 0, Math.PI * 2);
                         ctx.stroke();
-                    }});
+                    }}
                     ctx.globalAlpha = 1.0;
 
                     ctx.fillStyle = color;
