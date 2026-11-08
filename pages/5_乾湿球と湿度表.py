@@ -51,7 +51,7 @@ TABLE = build_table()
 
 st.title("乾湿球温度計と湿度表")
 st.write(
-    "左の温度計の水銀柱を**ドラッグ**して動かしてみよう。"
+    "左の温度計の液の先を**ドラッグ**して動かしてみよう。"
     "乾球と湿球の示度の差から、右の湿度表で湿度を読み取ることができます。"
 )
 
@@ -74,13 +74,14 @@ HTML = r"""
   table { border-collapse:collapse; width:100%; background:#fff; color:#222; font-size:20px; text-align:center; }
   th, td { border:1px solid #bbb; padding:7px 4px; }
   th { background:#eceef2; font-weight:600; }
-  td.hl-row, td.hl-col { background:#fff3d6; }
+  td.hl-row { background:#fde6e3; }
+  td.hl-col { background:#fff3d6; }
   th.hl-col { background:#ffd98a; }
-  td.hl-row-head { background:#ffd98a; font-weight:700; }
-  td.hit { background:#e8452c; color:#fff; font-weight:700; outline:3px solid #e8452c; }
+  td.hl-row-head { background:#f3a49c; font-weight:700; }
+  td.hit { background:#1b7f3b; color:#fff; font-weight:700; outline:3px solid #1b7f3b; }
   .readout { margin-top:12px; padding:10px 14px; background:#f4f7ff; border:1px solid #c4d0f0; border-radius:8px; font-size:20px; line-height:1.7; color:#222; }
   .readout b { font-size:24px; }
-  .ans { color:#d4301a; }
+  .ans { color:#1b7f3b; white-space:nowrap; }
   label { cursor:pointer; }
   @media (prefers-color-scheme: dark) {
     body { color:#eee; }
@@ -125,7 +126,8 @@ const TOP = 50, BOT = 480;   // 目盛り窓の上端・下端のy座標
 const SPAN = 10;
 const px = (t) => BOT - (t - winLo) / SPAN * (BOT - TOP);
 const val = (y) => winLo + (BOT - y) / (BOT - TOP) * SPAN;
-const TUBES = [{x:105, name:'乾球'}, {x:285, name:'湿球'}];
+const TUBES = [{x:105, name:'乾球', c:'#c0281c', c2:'#e8756b', tint:'#fde6e3', head:'#f3a49c'},
+               {x:285, name:'湿球', c:'#1c5fc0', c2:'#6ba0e8', tint:'#e1ecfb', head:'#9bbdf0'}];
 const TUBE_W = 34;
 
 function clampState() {
@@ -141,14 +143,14 @@ function draw() {
   TUBES.forEach((tb, i) => {
     const x = tb.x, v = i===0 ? dry : wet;
     // 名前
-    ctx.fillStyle = '#222'; ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillStyle = tb.c; ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(tb.name, x, 22);
     // ガラス管
     ctx.fillStyle = '#f7f9fc'; ctx.strokeStyle = '#555'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.rect(x-TUBE_W/2, TOP-12, TUBE_W, BOT-TOP+24); ctx.fill(); ctx.stroke();
     // 水銀(赤色のアルコール柱ではなく、教科書図に合わせて灰〜黒のグラデーション)
     const g = ctx.createLinearGradient(x-8,0,x+8,0);
-    g.addColorStop(0,'#111'); g.addColorStop(0.5,'#8a8a8a'); g.addColorStop(1,'#222');
+    g.addColorStop(0,tb.c); g.addColorStop(0.45,tb.c2); g.addColorStop(1,tb.c);
     ctx.fillStyle = g;
     ctx.fillRect(x-8, px(v), 16, BOT+12-px(v));
     // 目盛り
@@ -173,15 +175,15 @@ function draw() {
     }
     // 読み取り線と値
     const y = px(v);
-    ctx.strokeStyle = '#e8452c'; ctx.lineWidth = 1.5; ctx.setLineDash([5,4]);
+    ctx.strokeStyle = tb.c; ctx.lineWidth = 2; ctx.setLineDash([5,4]);
     ctx.beginPath(); ctx.moveTo(x-TUBE_W/2-4, y); ctx.lineTo(x+TUBE_W/2+30, y); ctx.stroke();
     ctx.setLineDash([]);
     // つかみ(三角)
-    ctx.fillStyle = '#e8452c';
+    ctx.fillStyle = tb.c;
     ctx.beginPath(); ctx.moveTo(x+TUBE_W/2+30, y); ctx.lineTo(x+TUBE_W/2+44, y-8); ctx.lineTo(x+TUBE_W/2+44, y+8); ctx.closePath(); ctx.fill();
-    ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'left';
+    ctx.font = 'bold 18px sans-serif';
     ctx.textAlign = i===0 ? 'left' : 'right';
-    ctx.fillText(v.toFixed(1)+'℃', i===0 ? x+TUBE_W/2+48 : x-TUBE_W/2-4, y-16 < TOP-14 ? TOP-14 : y-16);
+    ctx.fillText(v.toFixed(1)+'℃', i===0 ? x+TUBE_W/2+48 : CW-4, y-16 < TOP-14 ? TOP-14 : y-16);
   });
   // 湿球ガーゼ表示
   ctx.fillStyle = '#555'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
@@ -221,7 +223,7 @@ function renderTable() {
   const hide = document.getElementById('hide').checked;
   const rh = TABLE[dry][Math.round(diff*2)];
   document.getElementById('out').innerHTML =
-    '乾球の示度 <b>'+dry+'℃</b>、湿球の示度 <b>'+fmt(wet)+'℃</b><br>' +
+    '<span style="color:#c0281c">乾球の示度 <b>'+dry+'℃</b></span>、<span style="color:#1c5fc0">湿球の示度 <b>'+fmt(wet)+'℃</b></span><br>' +
     '示度の差 <b>'+fmt(diff)+'℃</b><br>' +
     '湿度表で「乾球 '+dry+'℃」の行と「差 '+fmt(diff)+'℃」の列が交わるところ → ' +
     (hide ? '<b class="ans">?? %</b>' : '<b class="ans">'+rh+' %</b>');
