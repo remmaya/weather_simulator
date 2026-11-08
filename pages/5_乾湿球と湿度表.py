@@ -227,37 +227,41 @@ function fmt(n){ return n.toFixed(1); }
 
 function renderTable() {
   const diff = Math.round((dry - wet)*2)/2;
+  const hide = document.getElementById('hide').checked;
   // 行: 乾球±3(0〜40に収める)
-  let r0 = Math.max(0, Math.min(40-6, dry-3));
+  let r0 = dry - 3 + (hide ? (dry % 5) - 2 : 0);   // 隠すときは答えの位置が推測できないようにずらす
+  r0 = Math.max(0, Math.min(40-6, r0));
   const rows = []; for (let r=r0+6; r>=r0; r--) rows.push(r);
   // 列: 差 diff を含む7列(0〜10に収める)
-  let c0 = Math.max(0, Math.min(10-3, diff-2.5));
+  let c0 = hide ? diff - 1.5 + (((dry + Math.round(diff*2)) % 5) - 2) * 0.5 : diff - 2.5;
+  c0 = Math.max(0, Math.min(10-3, c0));
   c0 = Math.round(c0*2)/2;
   const cols = []; for (let k=0;k<7;k++) cols.push(c0 + k*0.5);
 
   let h = '<tr><th rowspan="2" style="width:22%">乾球の<br>示度<br>〔℃〕</th><th colspan="7">乾球と湿球の示度の差〔℃〕</th></tr><tr>';
-  cols.forEach(c => { h += '<th class="'+(c===diff?'hl-col':'')+'">'+fmt(c)+'</th>'; });
+  cols.forEach(c => { h += '<th class="'+(!hide && c===diff?'hl-col':'')+'">'+fmt(c)+'</th>'; });
   h += '</tr>';
   rows.forEach(r => {
-    h += '<tr><td class="'+(r===dry?'hl-row-head':'')+'">'+r+'</td>';
+    h += '<tr><td class="'+(!hide && r===dry?'hl-row-head':'')+'">'+r+'</td>';
     cols.forEach(c => {
       const v = TABLE[r][Math.round(c*2)];
       let cls = '';
-      if (r===dry && c===diff) cls = 'hit';
-      else if (r===dry) cls = 'hl-row';
-      else if (c===diff) cls = 'hl-col';
+      if (!hide) {
+        if (r===dry && c===diff) cls = 'hit';
+        else if (r===dry) cls = 'hl-row';
+        else if (c===diff) cls = 'hl-col';
+      }
       h += '<td class="'+cls+'">'+v+'</td>';
     });
     h += '</tr>';
   });
   document.getElementById('tbl').innerHTML = h;
 
-  const hide = document.getElementById('hide').checked;
   const rh = TABLE[dry][Math.round(diff*2)];
   document.getElementById('out').innerHTML =
     '<span style="color:#c0281c">乾球の示度 <b>'+dry+'℃</b></span>、<span style="color:#1c5fc0">湿球の示度 <b>'+fmt(wet)+'℃</b></span><br>' +
     '示度の差 <b>'+fmt(diff)+'℃</b><br>' +
-    '湿度表で「乾球 '+dry+'℃」の行と「差 '+fmt(diff)+'℃」の列が交わるところ → ' +
+    (hide ? '湿度表で、乾球と湿球の示度の差から湿度を読み取ろう → ' : '湿度表で「乾球 '+dry+'℃」の行と「差 '+fmt(diff)+'℃」の列が交わるところ → ') +
     (hide ? '<b class="ans">?? %</b>' : '<b class="ans">'+rh+' %</b>');
 }
 
