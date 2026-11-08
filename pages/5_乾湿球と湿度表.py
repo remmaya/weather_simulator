@@ -64,22 +64,22 @@ HTML = r"""
   .wrap { display:flex; flex-wrap:wrap; gap:24px; align-items:flex-start; justify-content:center; }
   .left { width:380px; max-width:100%; }
   .right { flex:1; min-width:380px; }
-  canvas { touch-action:none; background:#fff; border:1px solid #ccd; border-radius:8px; display:block; width:380px; height:640px; max-width:100%; cursor:ns-resize; }
+  canvas { touch-action:none; background:#fff; border:1px solid #ccd; border-radius:8px; display:block; width:380px; height:508px; max-width:100%; cursor:ns-resize; }
   .bar { margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; font-size:14px; }
-  .bar button { padding:4px 10px; border:1px solid #889; background:#f4f6fb; border-radius:6px; cursor:pointer; font-size:14px; }
+  .bar button { padding:3px 7px; border:1px solid #889; background:#f4f6fb; border-radius:6px; cursor:pointer; font-size:14px; }
   .bar button.on { background:#2d6cdf; color:#fff; border-color:#2d6cdf; }
   .fine { display:flex; gap:6px; margin-top:6px; font-size:13px; justify-content:space-around; }
   .fine button { padding:2px 10px; border:1px solid #889; background:#f4f6fb; border-radius:6px; cursor:pointer; font-size:14px; }
   h3 { margin:0 0 6px 0; font-size:20px; }
-  table { border-collapse:collapse; width:100%; background:#fff; color:#222; font-size:20px; text-align:center; }
-  th, td { border:1px solid #bbb; padding:7px 4px; }
+  table { border-collapse:collapse; width:100%; background:#fff; color:#222; font-size:19px; text-align:center; }
+  th, td { border:1px solid #bbb; padding:4px 4px; }
   th { background:#eceef2; font-weight:600; }
   td.hl-row { background:#fde6e3; }
   td.hl-col { background:#fff3d6; }
   th.hl-col { background:#ffd98a; }
   td.hl-row-head { background:#f3a49c; font-weight:700; }
   td.hit { background:#1b7f3b; color:#fff; font-weight:700; outline:3px solid #1b7f3b; }
-  .readout { margin-top:12px; padding:10px 14px; background:#f4f7ff; border:1px solid #c4d0f0; border-radius:8px; font-size:20px; line-height:1.7; color:#222; }
+  .readout { margin-top:8px; padding:6px 14px; background:#f4f7ff; border:1px solid #c4d0f0; border-radius:8px; font-size:19px; line-height:1.55; color:#222; }
   .readout b { font-size:24px; }
   th.pick, td.pick { cursor:pointer; }
   th.pick:hover, td.pick:hover { outline:2px solid #888; }
@@ -93,17 +93,17 @@ HTML = r"""
 <body>
 <div class="wrap">
   <div class="left">
-    <canvas id="cv" width="380" height="640"></canvas>
+    <canvas id="cv" width="380" height="508"></canvas>
     <div class="fine">
       <span>乾球 <button id="dm">−1</button><button id="dp">+1</button></span>
       <span>湿球 <button id="wm">−0.5</button><button id="wp">+0.5</button></span>
     </div>
     <div class="bar">
       目盛りの範囲:
-      <button data-w="0">0〜10℃</button>
-      <button data-w="10">10〜20℃</button>
-      <button data-w="20">20〜30℃</button>
-      <button data-w="30">30〜40℃</button>
+      <button data-w="0">0〜10</button>
+      <button data-w="10">10〜20</button>
+      <button data-w="20">20〜30</button>
+      <button data-w="30">30〜40</button>
     </div>
   </div>
   <div class="right">
@@ -119,12 +119,12 @@ const TABLE = __TABLE__;
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d');
 const dpr = window.devicePixelRatio || 1;
-const CW = 380, CH = 640;
+const CW = 380, CH = 508;
 cv.width = CW*dpr; cv.height = CH*dpr; ctx.scale(dpr,dpr);
 
 let winLo = 10;          // 目盛り窓の下端(10℃幅)
 let dry = 19, wet = 17;  // 乾球は1℃刻み、湿球は0.5℃刻み
-const TOP = 50, BOT = 480;   // 目盛り窓の上端・下端のy座標
+const TOP = 46, BOT = 380;   // 目盛り窓の上端・下端のy座標
 const SPAN = 10;
 const px = (t) => BOT - (t - winLo) / SPAN * (BOT - TOP);
 const val = (y) => winLo + (BOT - y) / (BOT - TOP) * SPAN;
@@ -156,7 +156,7 @@ function draw() {
     ctx.fillStyle = g;
     ctx.fillRect(x-8, px(v), 16, BOT+12-px(v));
     // 液だめ(球部)
-    const bx = x, by = BOT + 12 + 46, br = 21;
+    const bx = x, by = BOT + 12 + 34, br = 21;
     ctx.fillStyle = '#f7f9fc';
     ctx.fillRect(x-TUBE_W/2+1, BOT+11, TUBE_W-2, 0);
     // 首(管と液だめをつなぐ細い部分)
@@ -221,8 +221,8 @@ function draw() {
   });
   // 湿球ガーゼ表示
   ctx.fillStyle = '#555'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('(ぬれたガーゼで包む)', TUBES[1].x, 620);
-  ctx.fillText('(ふつうの温度計)', TUBES[0].x, 620);
+  ctx.fillText('(ぬれたガーゼで包む)', TUBES[1].x, 494);
+  ctx.fillText('(ふつうの温度計)', TUBES[0].x, 494);
 }
 
 function fmt(n){ return n.toFixed(1); }
@@ -342,7 +342,7 @@ update();
 </body></html>
 """
 
-components.html(HTML.replace("__TABLE__", json.dumps(TABLE)), height=840)
+components.html(HTML.replace("__TABLE__", json.dumps(TABLE)), height=590)
 
 with st.expander("この湿度表の作り方(先生向け)"):
     st.markdown(
