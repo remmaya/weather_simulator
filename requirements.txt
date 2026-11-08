@@ -4,3 +4,5 @@ pandas==3.1.0
 numpy==2.5.4
 plotly==7.1.0
 streamlit-vertical-slider==2.5.5
+# streamlit-vertical-slider が内部で import streamlit_toggle しているため必須(使っていなくても消さない)
+streamlit-toggle-switch>=1.0.2
