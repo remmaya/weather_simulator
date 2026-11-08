@@ -1,6 +1,6 @@
-streamlit>=1.32
-pandas>=2.0
-numpy>=1.24
-plotly>=5.18
-streamlit-vertical-slider>=2.5.5
-streamlit-toggle-switch>=1.0.2
+# Pinned to the versions that were running on Streamlit Cloud at the 2026-11-03 reboot.
+streamlit==1.66.1
+pandas==3.1.0
+numpy==2.5.4
+plotly==7.1.0
+streamlit-vertical-slider==2.5.5
