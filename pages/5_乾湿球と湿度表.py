@@ -64,7 +64,7 @@ HTML = r"""
   .wrap { display:flex; flex-wrap:wrap; gap:24px; align-items:flex-start; justify-content:center; }
   .left { width:380px; max-width:100%; }
   .right { flex:1; min-width:380px; }
-  canvas { touch-action:none; background:#fff; border:1px solid #ccd; border-radius:8px; display:block; width:380px; height:600px; max-width:100%; cursor:ns-resize; }
+  canvas { touch-action:none; background:#fff; border:1px solid #ccd; border-radius:8px; display:block; width:380px; height:640px; max-width:100%; cursor:ns-resize; }
   .bar { margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; font-size:14px; }
   .bar button { padding:4px 10px; border:1px solid #889; background:#f4f6fb; border-radius:6px; cursor:pointer; font-size:14px; }
   .bar button.on { background:#2d6cdf; color:#fff; border-color:#2d6cdf; }
@@ -91,7 +91,7 @@ HTML = r"""
 <body>
 <div class="wrap">
   <div class="left">
-    <canvas id="cv" width="380" height="600"></canvas>
+    <canvas id="cv" width="380" height="640"></canvas>
     <div class="fine">
       <span>乾球 <button id="dm">−1</button><button id="dp">+1</button></span>
       <span>湿球 <button id="wm">−0.5</button><button id="wp">+0.5</button></span>
@@ -117,7 +117,7 @@ const TABLE = __TABLE__;
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d');
 const dpr = window.devicePixelRatio || 1;
-const CW = 380, CH = 600;
+const CW = 380, CH = 640;
 cv.width = CW*dpr; cv.height = CH*dpr; ctx.scale(dpr,dpr);
 
 let winLo = 10;          // 目盛り窓の下端(10℃幅)
@@ -154,10 +154,13 @@ function draw() {
     ctx.fillStyle = g;
     ctx.fillRect(x-8, px(v), 16, BOT+12-px(v));
     // 液だめ(球部)
-    const bx = x, by = BOT + 12 + 22, br = 21;
+    const bx = x, by = BOT + 12 + 46, br = 21;
     ctx.fillStyle = '#f7f9fc';
-    ctx.beginPath(); ctx.rect(x-8-2, BOT+8, 20, 16); ctx.fill();
-    ctx.fillStyle = g; ctx.fillRect(x-8, BOT+8, 16, 20);
+    ctx.fillRect(x-TUBE_W/2+1, BOT+11, TUBE_W-2, 0);
+    // 首(管と液だめをつなぐ細い部分)
+    ctx.fillStyle = '#f7f9fc'; ctx.strokeStyle = '#555'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.rect(x-10, BOT+12, 20, by-(BOT+12)); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = g; ctx.fillRect(x-8, BOT+8, 16, by-(BOT+8));
     const rg = ctx.createRadialGradient(bx-6, by-6, 3, bx, by, br);
     rg.addColorStop(0, tb.c2); rg.addColorStop(1, tb.c);
     ctx.fillStyle = rg; ctx.strokeStyle = '#555'; ctx.lineWidth = 2;
@@ -216,8 +219,8 @@ function draw() {
   });
   // 湿球ガーゼ表示
   ctx.fillStyle = '#555'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('(ぬれたガーゼで包む)', TUBES[1].x, 580);
-  ctx.fillText('(ふつうの温度計)', TUBES[0].x, 580);
+  ctx.fillText('(ぬれたガーゼで包む)', TUBES[1].x, 620);
+  ctx.fillText('(ふつうの温度計)', TUBES[0].x, 620);
 }
 
 function fmt(n){ return n.toFixed(1); }
@@ -304,7 +307,7 @@ update();
 </body></html>
 """
 
-components.html(HTML.replace("__TABLE__", json.dumps(TABLE)), height=800)
+components.html(HTML.replace("__TABLE__", json.dumps(TABLE)), height=840)
 
 with st.expander("この湿度表の作り方(先生向け)"):
     st.markdown(
