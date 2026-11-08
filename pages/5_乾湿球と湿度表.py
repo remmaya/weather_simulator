@@ -81,6 +81,8 @@ HTML = r"""
   td.hit { background:#1b7f3b; color:#fff; font-weight:700; outline:3px solid #1b7f3b; }
   .readout { margin-top:12px; padding:10px 14px; background:#f4f7ff; border:1px solid #c4d0f0; border-radius:8px; font-size:20px; line-height:1.7; color:#222; }
   .readout b { font-size:24px; }
+  th.pick, td.pick { cursor:pointer; }
+  th.pick:hover, td.pick:hover { outline:2px solid #888; }
   .ans { color:#1b7f3b; white-space:nowrap; }
   label { cursor:pointer; }
   @media (prefers-color-scheme: dark) {
@@ -225,9 +227,17 @@ function draw() {
 
 function fmt(n){ return n.toFixed(1); }
 
+// 練習モード:正しい行(乾球の示度)・列(差)を押すと色が付く
+let picked = {row:false, col:false};
+let pickMsg = '';
+let lastKey = '';
+
 function renderTable() {
   const diff = Math.round((dry - wet)*2)/2;
   const hide = document.getElementById('hide').checked;
+  const key = hide + '_' + dry + '_' + wet;
+  if (key !== lastKey) { picked = {row:false, col:false}; pickMsg = ''; lastKey = key; }
+  const showRow = !hide || picked.row, showCol = !hide || picked.col;
   // 行: 乾球±3(0〜40に収める)
   let r0 = dry - 3 + (hide ? (dry % 5) - 2 : 0);   // 隠すときは答えの位置が推測できないようにずらす
   r0 = Math.max(0, Math.min(40-6, r0));
@@ -239,18 +249,16 @@ function renderTable() {
   const cols = []; for (let k=0;k<7;k++) cols.push(c0 + k*0.5);
 
   let h = '<tr><th rowspan="2" style="width:22%">乾球の<br>示度<br>〔℃〕</th><th colspan="7">乾球と湿球の示度の差〔℃〕</th></tr><tr>';
-  cols.forEach(c => { h += '<th class="'+(!hide && c===diff?'hl-col':'')+'">'+fmt(c)+'</th>'; });
+  cols.forEach(c => { h += '<th class="'+(showCol && c===diff?'hl-col ':'')+(hide?'pick':'')+'" data-kind="col" data-v="'+c+'">'+fmt(c)+'</th>'; });
   h += '</tr>';
   rows.forEach(r => {
-    h += '<tr><td class="'+(!hide && r===dry?'hl-row-head':'')+'">'+r+'</td>';
+    h += '<tr><td class="'+(showRow && r===dry?'hl-row-head ':'')+(hide?'pick':'')+'" data-kind="row" data-v="'+r+'">'+r+'</td>';
     cols.forEach(c => {
       const v = TABLE[r][Math.round(c*2)];
       let cls = '';
-      if (!hide) {
-        if (r===dry && c===diff) cls = 'hit';
-        else if (r===dry) cls = 'hl-row';
-        else if (c===diff) cls = 'hl-col';
-      }
+      if (showRow && showCol && r===dry && c===diff) cls = 'hit';
+      else if (showRow && r===dry) cls = 'hl-row';
+      else if (showCol && c===diff) cls = 'hl-col';
       h += '<td class="'+cls+'">'+v+'</td>';
     });
     h += '</tr>';
@@ -261,8 +269,18 @@ function renderTable() {
   document.getElementById('out').innerHTML =
     '<span style="color:#c0281c">乾球の示度 <b>'+dry+'℃</b></span>、<span style="color:#1c5fc0">湿球の示度 <b>'+fmt(wet)+'℃</b></span><br>' +
     '示度の差 <b>'+fmt(diff)+'℃</b><br>' +
-    (hide ? '湿度表で、乾球と湿球の示度の差から湿度を読み取ろう → ' : '湿度表で「乾球 '+dry+'℃」の行と「差 '+fmt(diff)+'℃」の列が交わるところ → ') +
-    (hide ? '<b class="ans">?? %</b>' : '<b class="ans">'+rh+' %</b>');
+    (hide ? practiceHint() : '湿度表で「乾球 '+dry+'℃」の行と「差 '+fmt(diff)+'℃」の列が交わるところ → ') +
+    ((hide && !(picked.row && picked.col)) ? '<b class="ans">?? %</b>' : '<b class="ans">'+rh+' %</b>');
+}
+
+function practiceHint() {
+  let t;
+  if (!picked.row && !picked.col) t = '① 表の左の列から、乾球の示度の行を押そう<br>② 上の見出しから、示度の差の列を押そう';
+  else if (picked.row && !picked.col) t = '② 上の見出しから、示度の差の列を押そう';
+  else if (!picked.row && picked.col) t = '① 表の左の列から、乾球の示度の行を押そう';
+  else t = '行と列が交わるところが湿度 → ';
+  if (pickMsg) t = '<span style="color:#b36b00">' + pickMsg + '</span><br>' + t;
+  return t + (picked.row && picked.col ? '' : '<br>');
 }
 
 function update() {
@@ -306,6 +324,19 @@ document.querySelectorAll('.bar button[data-w]').forEach(b => {
   };
 });
 document.getElementById('hide').onchange = update;
+document.getElementById('tbl').addEventListener('click', e => {
+  if (!document.getElementById('hide').checked) return;
+  const el = e.target.closest('[data-kind]');
+  if (!el) return;
+  const kind = el.dataset.kind, v = Number(el.dataset.v);
+  const diff = Math.round((dry - wet)*2)/2;
+  if (kind === 'row') {
+    if (v === dry) { picked.row = true; pickMsg = ''; } else pickMsg = 'そこではありません。乾球の示度をもう一度見てみよう';
+  } else {
+    if (v === diff) { picked.col = true; pickMsg = ''; } else pickMsg = 'そこではありません。示度の差(乾球−湿球)を計算してみよう';
+  }
+  renderTable();
+});
 update();
 </script>
 </body></html>
