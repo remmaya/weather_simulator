@@ -71,19 +71,20 @@ HTML = r"""
   .fine { display:flex; gap:6px; margin-top:6px; font-size:13px; justify-content:space-around; }
   .fine button { padding:2px 10px; border:1px solid #889; background:#f4f6fb; border-radius:6px; cursor:pointer; font-size:14px; }
   h3 { margin:0 0 6px 0; font-size:20px; }
-  table { border-collapse:collapse; width:100%; background:#fff; font-size:20px; text-align:center; }
+  table { border-collapse:collapse; width:100%; background:#fff; color:#222; font-size:20px; text-align:center; }
   th, td { border:1px solid #bbb; padding:7px 4px; }
   th { background:#eceef2; font-weight:600; }
   td.hl-row, td.hl-col { background:#fff3d6; }
   th.hl-col { background:#ffd98a; }
   td.hl-row-head { background:#ffd98a; font-weight:700; }
   td.hit { background:#e8452c; color:#fff; font-weight:700; outline:3px solid #e8452c; }
-  .readout { margin-top:12px; padding:10px 14px; background:#f4f7ff; border:1px solid #c4d0f0; border-radius:8px; font-size:20px; line-height:1.7; }
+  .readout { margin-top:12px; padding:10px 14px; background:#f4f7ff; border:1px solid #c4d0f0; border-radius:8px; font-size:20px; line-height:1.7; color:#222; }
   .readout b { font-size:24px; }
   .ans { color:#d4301a; }
   label { cursor:pointer; }
   @media (prefers-color-scheme: dark) {
     body { color:#eee; }
+    .bar button, .fine button { color:#222; }
   }
 </style></head>
 <body>
@@ -272,7 +273,7 @@ update();
 </body></html>
 """
 
-components.html(HTML.replace("__TABLE__", json.dumps(TABLE)), height=640)
+components.html(HTML.replace("__TABLE__", json.dumps(TABLE)), height=720)
 
 with st.expander("この湿度表の作り方(先生向け)"):
     st.markdown(
