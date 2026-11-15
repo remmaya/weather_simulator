@@ -19,7 +19,7 @@ import streamlit.components.v1 as components
 st.set_page_config(page_title="乾湿球と湿度表", layout="wide")
 
 # ---------------------------------------------------------------
-# 湿度表の作成(乾球 0〜40℃ を1℃刻み、差 0〜10℃ を0.5℃刻み)
+# 湿度表の作成(乾球 0〜40℃ を1℃刻み、差 0〜40℃ を0.5℃刻み)
 # ---------------------------------------------------------------
 PRESSURE_HPA = 1013.25
 PSYCHRO_COEF = 0.0008  # 乾湿計定数(1/℃)
@@ -40,7 +40,7 @@ def build_table():
     table = {}
     for dry in range(0, 41):
         row = []
-        for k in range(0, 21):  # 差 0.0, 0.5, ... 10.0
+        for k in range(0, 81):  # 差 0.0, 0.5, ... 40.0
             diff = k * 0.5
             row.append(humidity_percent(dry, dry - diff))
         table[dry] = row
@@ -98,12 +98,17 @@ HTML = r"""
       <span>乾球 <button id="dm">−1</button><button id="dp">+1</button></span>
       <span>湿球 <button id="wm">−0.5</button><button id="wp">+0.5</button></span>
     </div>
-    <div class="bar">
-      目盛りの範囲:
-      <button data-w="0">0〜10</button>
-      <button data-w="10">10〜20</button>
-      <button data-w="20">20〜30</button>
-      <button data-w="30">30〜40</button>
+    <div class="bar"><span style="color:#c0281c;font-weight:600">乾球の目盛り</span>
+      <button data-t="0" data-w="0">0〜10</button>
+      <button data-t="0" data-w="10">10〜20</button>
+      <button data-t="0" data-w="20">20〜30</button>
+      <button data-t="0" data-w="30">30〜40</button>
+    </div>
+    <div class="bar"><span style="color:#1c5fc0;font-weight:600">湿球の目盛り</span>
+      <button data-t="1" data-w="0">0〜10</button>
+      <button data-t="1" data-w="10">10〜20</button>
+      <button data-t="1" data-w="20">20〜30</button>
+      <button data-t="1" data-w="30">30〜40</button>
     </div>
   </div>
   <div class="right">
@@ -122,21 +127,25 @@ const dpr = window.devicePixelRatio || 1;
 const CW = 380, CH = 508;
 cv.width = CW*dpr; cv.height = CH*dpr; ctx.scale(dpr,dpr);
 
-let winLo = 10;          // 目盛り窓の下端(10℃幅)
+const LO = [10, 10];     // 乾球・湿球それぞれの目盛り窓の下端(各10℃幅)
 let dry = 19, wet = 17;  // 乾球は1℃刻み、湿球は0.5℃刻み
 const TOP = 46, BOT = 380;   // 目盛り窓の上端・下端のy座標
 const SPAN = 10;
-const px = (t) => BOT - (t - winLo) / SPAN * (BOT - TOP);
-const val = (y) => winLo + (BOT - y) / (BOT - TOP) * SPAN;
+const px = (t, lo) => BOT - (t - lo) / SPAN * (BOT - TOP);
+const val = (y, lo) => lo + (BOT - y) / (BOT - TOP) * SPAN;
 const TUBES = [{x:105, name:'乾球', c:'#c0281c', c2:'#e8756b', tint:'#fde6e3', head:'#f3a49c'},
                {x:285, name:'湿球', c:'#1c5fc0', c2:'#6ba0e8', tint:'#e1ecfb', head:'#9bbdf0'}];
 const TUBE_W = 34;
 
+function fitWindow(i, v) {
+  // 値が目盛り窓からはみ出していたら、窓をずらして収める
+  if (v < LO[i] || v > LO[i] + SPAN) LO[i] = Math.min(30, Math.floor(v / 10) * 10);
+}
 function clampState() {
-  const hi = winLo + SPAN;
-  dry = Math.min(hi, Math.max(winLo, Math.round(dry)));
+  dry = Math.min(40, Math.max(0, Math.round(dry)));
   wet = Math.round(wet*2)/2;
-  wet = Math.min(dry, Math.max(winLo, wet));
+  wet = Math.min(dry, Math.max(0, wet));
+  fitWindow(0, dry); fitWindow(1, wet);
 }
 
 function draw() {
@@ -154,7 +163,7 @@ function draw() {
     const g = ctx.createLinearGradient(x-8,0,x+8,0);
     g.addColorStop(0,tb.c); g.addColorStop(0.45,tb.c2); g.addColorStop(1,tb.c);
     ctx.fillStyle = g;
-    ctx.fillRect(x-8, px(v), 16, BOT+12-px(v));
+    ctx.fillRect(x-8, px(v, LO[i]), 16, BOT+12-px(v, LO[i]));
     // 液だめ(球部)
     const bx = x, by = BOT + 12 + 34, br = 21;
     ctx.fillStyle = '#f7f9fc';
@@ -189,7 +198,7 @@ function draw() {
     }
     // 目盛り
     for (let k=0; k<=SPAN*2; k++) {
-      const t = winLo + k/2, y = px(t);
+      const lo = LO[i], t = lo + k/2, y = px(t, lo);
       const isInt = (k%2===0);
       const len = isInt ? 16 : 9;
       ctx.strokeStyle = '#333'; ctx.lineWidth = isInt ? 1.6 : 1;
@@ -198,9 +207,6 @@ function draw() {
       ctx.moveTo(x-TUBE_W/2-len, y); ctx.lineTo(x-TUBE_W/2, y);
       ctx.moveTo(x+TUBE_W/2, y); ctx.lineTo(x+TUBE_W/2+len, y);
       ctx.stroke();
-      if (isInt && (k%4===0 || t===winLo || t===winLo+SPAN)) {
-        // 5℃ごと・端に数字(教科書の「2 0」「1 0」のように)
-      }
       if (isInt) {
         ctx.fillStyle = '#222'; ctx.font = (t%5===0 ? 'bold 17px' : '14px') + ' sans-serif';
         ctx.textAlign = 'right';
@@ -208,7 +214,7 @@ function draw() {
       }
     }
     // 読み取り線と値
-    const y = px(v);
+    const y = px(v, LO[i]);
     ctx.strokeStyle = tb.c; ctx.lineWidth = 2; ctx.setLineDash([5,4]);
     ctx.beginPath(); ctx.moveTo(x-TUBE_W/2-4, y); ctx.lineTo(x+TUBE_W/2+30, y); ctx.stroke();
     ctx.setLineDash([]);
@@ -242,9 +248,9 @@ function renderTable() {
   let r0 = dry - 3 + (hide ? (dry % 5) - 2 : 0);   // 隠すときは答えの位置が推測できないようにずらす
   r0 = Math.max(0, Math.min(40-6, r0));
   const rows = []; for (let r=r0+6; r>=r0; r--) rows.push(r);
-  // 列: 差 diff を含む7列(0〜10に収める)
+  // 列: 差 diff を含む7列(0〜40に収める)
   let c0 = hide ? diff - 1.5 + (((dry + Math.round(diff*2)) % 5) - 2) * 0.5 : diff - 2.5;
-  c0 = Math.max(0, Math.min(10-3, c0));
+  c0 = Math.max(0, Math.min(40-3, c0));
   c0 = Math.round(c0*2)/2;
   const cols = []; for (let k=0;k<7;k++) cols.push(c0 + k*0.5);
 
@@ -286,7 +292,7 @@ function practiceHint() {
 function update() {
   clampState(); draw(); renderTable();
   document.querySelectorAll('.bar button[data-w]').forEach(b => {
-    b.classList.toggle('on', Number(b.dataset.w) === winLo);
+    b.classList.toggle('on', Number(b.dataset.w) === LO[Number(b.dataset.t)]);
   });
 }
 
@@ -295,7 +301,7 @@ let drag = null;
 function pointerY(e) { const r = cv.getBoundingClientRect(); return (e.clientY - r.top) * (CH / r.height); }
 function pointerX(e) { const r = cv.getBoundingClientRect(); return (e.clientX - r.left) * (CW / r.width); }
 function apply(which, y) {
-  const v = val(y);
+  const v = val(y, LO[which]);
   if (which === 0) { dry = Math.round(v); if (wet > dry) wet = dry; }
   else { wet = Math.round(v*2)/2; }
   update();
@@ -317,9 +323,11 @@ document.getElementById('wm').onclick = () => { wet -= 0.5; update(); };
 document.getElementById('wp').onclick = () => { wet += 0.5; update(); };
 document.querySelectorAll('.bar button[data-w]').forEach(b => {
   b.onclick = () => {
-    const rel = dry - winLo, relw = wet - winLo;
-    winLo = Number(b.dataset.w);
-    dry = winLo + rel; wet = winLo + relw;   // 窓の中の同じ位置に移動
+    const i = Number(b.dataset.t), lo = Number(b.dataset.w);
+    LO[i] = lo;
+    // 示度が新しい目盛りの外にあるときは、いちばん近い端に動かす
+    if (i === 0) dry = Math.min(lo + SPAN, Math.max(lo, dry));
+    else wet = Math.min(lo + SPAN, Math.max(lo, wet));
     update();
   };
 });
@@ -342,7 +350,7 @@ update();
 </body></html>
 """
 
-components.html(HTML.replace("__TABLE__", json.dumps(TABLE)), height=590)
+components.html(HTML.replace("__TABLE__", json.dumps(TABLE)), height=630)
 
 with st.expander("この湿度表の作り方(先生向け)"):
     st.markdown(
